@@ -1,5 +1,5 @@
-// Template, IGAD version 3
-// IGAD/NHTV/UU - Jacco Bikker - 2006-2022
+// Template, IGAD version 2026
+// IGAD/NHTV/BUAS/UU - Jacco Bikker - 2006-2026
 
 // common.h is to be included in host and device code and stores
 // global settings and defines.

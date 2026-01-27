@@ -1,5 +1,5 @@
-// Template, IGAD version 3
-// IGAD/NHTV/UU - Jacco Bikker - 2006-2022
+// Template, IGAD version 2026
+// IGAD/NHTV/BUAS/UU - Jacco Bikker - 2006-2026
 
 // C++ headers
 #include <chrono>
