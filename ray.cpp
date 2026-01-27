@@ -11,7 +11,7 @@ Ray::Ray( const float3 origin, const float3 direction, const float rayLength, co
 	uint xsign = *(uint*)&D.x >> 31;
 	uint ysign = *(uint*)&D.y >> 31;
 	uint zsign = *(uint*)&D.z >> 31;
-	Dsign = (float3( (float)xsign * 2 - 1, (float)ysign * 2 - 1, (float)zsign * 2 - 1 ) + 1) * 0.5f;
+	Dsign = float3( xsign, ysign, zsign ); // tnx Timon
 #else
 	Dsign = (float3( -copysign( 1.0f, D.x ), -copysign( 1.0f, D.y ), -copysign( 1.0f, D.z ) ) + 1) * 0.5f;
 #endif
