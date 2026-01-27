@@ -36,22 +36,22 @@ void Surface::LoadFromFile( const char* file )
 	int n;
 	unsigned char* data = stbi_load( file, &width, &height, &n, 0 );
 	if (!data) return; // load failed
-		pixels = (uint*)MALLOC64( width * height * sizeof( uint ) );
-		ownBuffer = true; // needs to be deleted in destructor
-		const int s = width * height;
+	pixels = (uint*)MALLOC64( width * height * sizeof( uint ) );
+	ownBuffer = true; // needs to be deleted in destructor
+	const int s = width * height;
 	if (n == 1) /* greyscale */ for (int i = 0; i < s; i++)
-			{
-				const unsigned char p = data[i];
-				pixels[i] = p + (p << 8) + (p << 16);
-			}
+	{
+		const unsigned char p = data[i];
+		pixels[i] = p + (p << 8) + (p << 16);
+	}
 	else if (n == 4) // bitmap has alpha data
 	{
 		for (int i = 0; i < s; i++) pixels[i] = (data[i * 4 + 3] << 24) + (data[i * 4 + 0] << 16) + (data[i * 4 + 1] << 8) + data[i * 4 + 2];
 	}
 	else // no alpha
-		{
-			for (int i = 0; i < s; i++) pixels[i] = (data[i * n + 0] << 16) + (data[i * n + 1] << 8) + data[i * n + 2];
-		}
+	{
+		for (int i = 0; i < s; i++) pixels[i] = (data[i * n + 0] << 16) + (data[i * n + 1] << 8) + data[i * n + 2];
+	}
 	// free stb_image data
 	stbi_image_free( data );
 }

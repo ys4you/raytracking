@@ -178,12 +178,12 @@ Buffer::~Buffer()
 {
 	if (size > 0)
 	{
-	if (ownData)
-	{
-		FREE64( hostBuffer );
-		hostBuffer = 0;
-	}
-	if ((type & (TEXTURE | TARGET)) == 0) clReleaseMemObject( deviceBuffer );
+		if (ownData)
+		{
+			FREE64( hostBuffer );
+			hostBuffer = 0;
+		}
+		if ((type & (TEXTURE | TARGET)) == 0) clReleaseMemObject( deviceBuffer );
 	}
 }
 
@@ -698,12 +698,12 @@ void Kernel::SetArgument( int idx, Buffer* buffer )
 	}
 	else
 	{
-	clSetKernelArg( kernel, idx, sizeof( cl_mem ), buffer->GetDevicePtr() );
-	if (buffer->type & Buffer::TARGET)
-	{
-		if (acqBuffer) FatalError( "Kernel can take only one texture target buffer argument." );
-		acqBuffer = buffer;
-	}
+		clSetKernelArg( kernel, idx, sizeof( cl_mem ), buffer->GetDevicePtr() );
+		if (buffer->type & Buffer::TARGET)
+		{
+			if (acqBuffer) FatalError( "Kernel can take only one texture target buffer argument." );
+			acqBuffer = buffer;
+		}
 	}
 }
 void Kernel::SetArgument( int idx, float3 value )
