@@ -59,8 +59,8 @@ bool Scene::Setup3DDDA( Ray& ray, DDAState& state ) const
 	}
 	// setup amanatides & woo - assume world is 1x1x1, from (0,0,0) to (1,1,1)
 	static const float cellSize = 1.0f / GRIDSIZE;
-	state.step = make_int3( 1 - ray.Dsign * 2 );
-	const float3 posInGrid = GRIDSIZE * (ray.O + (state.t + 0.00005f) * ray.D);
+	state.step = make_int3( 1.0f - ray.Dsign * 2.0f );
+	const float3 posInGrid = (float)GRIDSIZE * (ray.O + (state.t + 0.00005f) * ray.D);
 	const float3 gridPlanes = (ceilf( posInGrid ) - ray.Dsign) * cellSize;
 	const int3 P = clamp( make_int3( posInGrid ), 0, GRIDSIZE - 1 );
 	state.X = P.x, state.Y = P.y, state.Z = P.z;

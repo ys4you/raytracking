@@ -68,9 +68,9 @@ bool Camera::HandleInput( const float t )
 	ahead = normalize( camTarget - camPos );
 	up = normalize( cross( ahead, right ) );
 	right = normalize( cross( up, ahead ) );
-	topLeft = camPos + 2 * ahead - aspect * right + up;
-	topRight = camPos + 2 * ahead + aspect * right + up;
-	bottomLeft = camPos + 2 * ahead - aspect * right - up;
+	topLeft = camPos + 2.0f * ahead - aspect * right + up;
+	topRight = camPos + 2.0f * ahead + aspect * right + up;
+	bottomLeft = camPos + 2.0f * ahead - aspect * right - up;
 	if (!changed) return false;
 	return true;
 }

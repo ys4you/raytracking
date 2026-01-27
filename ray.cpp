@@ -20,7 +20,7 @@ Ray::Ray( const float3 origin, const float3 direction, const float rayLength, co
 float3 Ray::GetNormal() const
 {
 	// return the voxel normal at the nearest intersection
-	const float3 sign = Dsign * 2 - 1;
+	const float3 sign = Dsign * 2.0f - 1.0f;
 	return float3( axis == 0 ? sign.x : 0, axis == 1 ? sign.y : 0, axis == 2 ? sign.z : 0 );
 }
 

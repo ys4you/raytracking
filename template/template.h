@@ -21,6 +21,7 @@
 typedef unsigned char uchar;
 typedef unsigned int uint;
 typedef unsigned short ushort;
+typedef unsigned short half;
 #ifdef _MSC_VER
 typedef unsigned char BYTE;		// for freeimage.h
 typedef unsigned short WORD;	// for freeimage.h
@@ -112,9 +113,19 @@ using namespace Tmpl8;
 #include "tmpl8math.h"
 
 // OpenCL headers
-#define CL_USE_DEPRECATED_OPENCL_2_0_APIS // safe; see https://stackoverflow.com/a/28500846
+// #define CL_USE_DEPRECATED_OPENCL_2_0_APIS // safe; see https://stackoverflow.com/a/28500846
+#define CL_TARGET_OPENCL_VERSION 300
 #include "cl/cl.h"
-#include <cl/cl_gl_ext.h>
+#include <cl/cl_gl.h>
+
+// cross-platform directory access
+#ifdef _MSC_VER
+#include <direct.h>
+#define getcwd _getcwd
+#define chdir _chdir
+#else
+#include <unistd.h>
+#endif
 
 // GLFW
 #define GLFW_USE_CHDIR 0

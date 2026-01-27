@@ -35,12 +35,12 @@
     <ClCompile Include="lib\imgui\imgui_widgets.cpp">
       <Filter>template\imgui</Filter>
     </ClCompile>
-    <ClCompile Include="template\scene.cpp" />
     <ClCompile Include="template\tmpl8math.cpp">
       <Filter>template</Filter>
     </ClCompile>
     <ClCompile Include="camera.cpp" />
     <ClCompile Include="ray.cpp" />
+    <ClCompile Include="scene.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="renderer.h" />
@@ -86,12 +86,12 @@
     <ClInclude Include="lib\imgui\imconfig.h">
       <Filter>template\imgui</Filter>
     </ClInclude>
-    <ClInclude Include="template\scene.h" />
     <ClInclude Include="template\tmpl8math.h">
       <Filter>template</Filter>
     </ClInclude>
     <ClInclude Include="ray.h" />
     <ClInclude Include="camera.h" />
+    <ClInclude Include="scene.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="template">

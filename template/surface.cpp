@@ -45,7 +45,11 @@ void Surface::LoadFromFile( const char* file )
 				const unsigned char p = data[i];
 				pixels[i] = p + (p << 8) + (p << 16);
 			}
-		else
+	else if (n == 4) // bitmap has alpha data
+	{
+		for (int i = 0; i < s; i++) pixels[i] = (data[i * 4 + 3] << 24) + (data[i * 4 + 0] << 16) + (data[i * 4 + 1] << 8) + data[i * 4 + 2];
+	}
+	else // no alpha
 		{
 			for (int i = 0; i < s; i++) pixels[i] = (data[i * n + 0] << 16) + (data[i * n + 1] << 8) + data[i * n + 2];
 		}
@@ -164,7 +168,7 @@ void Surface::CopyTo( Surface* d, int x, int y )
 		if ((srcwidth + x) > dstwidth) srcwidth = dstwidth - x;
 		if ((srcheight + y) > dstheight) srcheight = dstheight - y;
 		if (x < 0) src -= x, srcwidth += x, x = 0;
-		if (y < 0) src -= y * srcwidth, srcheight += y, y = 0;
+		if (y < 0) src -= y * width, srcheight += y, y = 0;
 		if ((srcwidth > 0) && (srcheight > 0))
 		{
 			dst += x + dstwidth * y;

@@ -65,29 +65,21 @@ void DrawQuad()
 	if (!vao)
 	{
 		// generate buffers
-		static const GLfloat verts[] = { -1, 1, 0, 1, 1, 0, -1, -1, 0, 1, 1, 0, -1, -1, 0, 1, -1, 0 };
-		static const GLfloat uvdata[] = { 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1 };
-		static const GLfloat verts_igp[] = { 0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0 };
-		static const GLfloat uvdata_igp[] = { -1, -1, 1, -1, -1, 1, 1, -1, -1, 1, 1, 1 };
-		GLuint vertexBuffer, UVBuffer;
-		if (IGP_detected)
-		{
-			// not sure why it is needed - without it IGPs tile and clamp the output.
-			vertexBuffer = CreateVBO( verts_igp, sizeof( verts_igp ) );
-			UVBuffer = CreateVBO( uvdata_igp, sizeof( uvdata_igp ) );
-		}
-		else
-		{
-			vertexBuffer = CreateVBO( verts, sizeof( verts ) );
-			UVBuffer = CreateVBO( uvdata, sizeof( uvdata ) );
-		}
+		static const GLfloat verts[] = { -1, 1, 1, 1, -1, -1, 1, 1, -1, -1, 1, -1 };
+		GLuint vbo = CreateVBO( verts, sizeof( verts ) );
 		glGenVertexArrays( 1, &vao );
 		glBindVertexArray( vao );
-		BindVBO( 0, 3, vertexBuffer );
-		BindVBO( 1, 2, UVBuffer );
+		glEnableVertexAttribArray( 0 );
+		glBindBuffer( GL_ARRAY_BUFFER, vbo );
+		glVertexAttribPointer( 0, 2, GL_FLOAT, GL_FALSE, 0, NULL );
 		glBindVertexArray( 0 );
 		CheckGL();
 	}
+#ifdef DOUBLESIZE
+	glViewport( 0, 0, SCRWIDTH * 2, SCRHEIGHT * 2 );
+#else
+	glViewport( 0, 0, SCRWIDTH, SCRHEIGHT );
+#endif
 	glBindVertexArray( vao );
 	glDrawArrays( GL_TRIANGLES, 0, 6 );
 	glBindVertexArray( 0 );
@@ -96,8 +88,7 @@ void DrawQuad()
 // OpenGL texture wrapper class
 GLTexture::GLTexture( uint w, uint h, uint type )
 {
-	width = w;
-	height = h;
+	width = w, height = h;
 	glGenTextures( 1, &ID );
 	glBindTexture( GL_TEXTURE_2D, ID );
 	if (type == DEFAULT)
@@ -204,6 +195,7 @@ void Shader::Compile( const char* vtext, const char* ftext )
 	glAttachShader( ID, pixel );
 	glBindAttribLocation( ID, 0, "pos" );
 	glBindAttribLocation( ID, 1, "tuv" );
+	CheckGL();
 	glLinkProgram( ID );
 	CheckProgram( ID );
 	CheckGL();

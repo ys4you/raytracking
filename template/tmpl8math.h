@@ -31,6 +31,7 @@ struct ALIGN( 8 ) int2
 	int2( const int a ) : x( a ), y( a ) {}
 	union { struct { int x, y; }; int cell[2]; };
 	int& operator [] ( const int n ) { return cell[n]; }
+	const int& operator [] ( const int n ) const { return cell[n]; }
 };
 struct ALIGN( 8 ) uint2
 {
@@ -39,6 +40,7 @@ struct ALIGN( 8 ) uint2
 	uint2( const uint a ) : x( a ), y( a ) {}
 	union { struct { uint x, y; }; uint cell[2]; };
 	uint& operator [] ( const int n ) { return cell[n]; }
+	const uint& operator [] ( const int n ) const { return cell[n]; }
 };
 struct ALIGN( 8 ) float2
 {
@@ -48,6 +50,7 @@ struct ALIGN( 8 ) float2
 	float2( const int2 a ) : x( (float)a.x ), y( (float)a.y ) {}
 	union { struct { float x, y; }; float cell[2]; };
 	float& operator [] ( const int n ) { return cell[n]; }
+	const float& operator [] ( const int n ) const { return cell[n]; }
 };
 struct int3;
 struct ALIGN( 16 ) int4
@@ -58,15 +61,19 @@ struct ALIGN( 16 ) int4
 	int4( const int3 & a, const int d );
 	union { struct { int x, y, z, w; }; int cell[4]; };
 	int& operator [] ( const int n ) { return cell[n]; }
+	const int& operator [] ( const int n ) const { return cell[n]; }
 };
+struct float3;
 struct ALIGN( 16 ) int3
 {
 	int3() = default;
 	int3( const int a, const int b, const int c ) : x( a ), y( b ), z( c ) {}
 	int3( const int a ) : x( a ), y( a ), z( a ) {}
 	int3( const int4 a ) : x( a.x ), y( a.y ), z( a.z ) {}
+	int3( const float3 & a );
 	union { struct { int x, y, z; int dummy; }; int cell[4]; };
 	int& operator [] ( const int n ) { return cell[n]; }
+	const int& operator [] ( const int n ) const { return cell[n]; }
 };
 struct uint3;
 struct ALIGN( 16 ) uint4
@@ -77,6 +84,7 @@ struct ALIGN( 16 ) uint4
 	uint4( const uint3 & a, const uint d );
 	union { struct { uint x, y, z, w; }; uint cell[4]; };
 	uint& operator [] ( const int n ) { return cell[n]; }
+	const uint& operator [] ( const int n ) const { return cell[n]; }
 };
 struct ALIGN( 16 ) uint3
 {
@@ -84,10 +92,11 @@ struct ALIGN( 16 ) uint3
 	uint3( const uint a, const uint b, const uint c ) : x( a ), y( b ), z( c ) {}
 	uint3( const uint a ) : x( a ), y( a ), z( a ) {}
 	uint3( const uint4 a ) : x( a.x ), y( a.y ), z( a.z ) {}
+	uint3( const float3 & a );
 	union { struct { uint x, y, z; uint dummy; }; uint cell[4]; };
 	uint& operator [] ( const int n ) { return cell[n]; }
+	const uint& operator [] ( const int n ) const { return cell[n]; }
 };
-struct float3;
 struct ALIGN( 16 ) float4
 {
 	float4() = default;
@@ -99,6 +108,7 @@ struct ALIGN( 16 ) float4
 	float4( const int4 a ) : x( (float)a.x ), y( (float)a.y ), z( (float)a.z ), w( (float)a.w ) {}
 	union { struct { float x, y, z, w; }; float cell[4]; };
 	float& operator [] ( const int n ) { return cell[n]; }
+	const float& operator [] ( const int n ) const { return cell[n]; }
 };
 struct float3
 {
@@ -108,10 +118,14 @@ struct float3
 	float3( const float4 a ) : x( a.x ), y( a.y ), z( a.z ) {}
 	float3( const uint3 a ) : x( (float)a.x ), y( (float)a.y ), z( (float)a.z ) {}
 	float3( const int3 a ) : x( (float)a.x ), y( (float)a.y ), z( (float)a.z ) {}
+	float3( const uint4 a ) : x( (float)a.x ), y( (float)a.y ), z( (float)a.z ) {}
+	float3( const int4 a ) : x( (float)a.x ), y( (float)a.y ), z( (float)a.z ) {}
 	float2 xy() { return float2( x, y ); }
 	float2 yz() { return float2( y, z ); }
+	float halfArea() { return x < -1e30f ? 0 : (x * y + y * z + z * x); } // for SAH calculations
 	union { struct { float x, y, z; }; float cell[3]; };
 	float& operator [] ( const int n ) { return cell[n]; }
+	const float& operator [] ( const int n ) const { return cell[n]; }
 };
 struct ALIGN( 4 ) uchar4
 {
@@ -120,14 +134,14 @@ struct ALIGN( 4 ) uchar4
 	uchar4( const uchar a ) : x( a ), y( a ), z( a ), w( a ) {}
 	union { struct { uchar x, y, z, w; }; uchar cell[4]; };
 	uchar& operator [] ( const int n ) { return cell[n]; }
+	const uchar& operator [] ( const int n ) const { return cell[n]; }
 };
 
 #pragma warning ( pop )
 
 }
 
-// swap
-template <class T> void Swap( T& x, T& y ) { T t; t = x, x = y, y = t; }
+using namespace Tmpl8;
 
 // random numbers
 uint InitSeed( uint seedBase );
@@ -136,7 +150,6 @@ uint RandomUInt( uint& seed );
 float RandomFloat();
 float RandomFloat( uint& seed );
 float Rand( float range );
-uint WangHash( uint s );
 
 // math
 inline float fminf( const float a, const float b ) { return a < b ? a : b; }
@@ -149,7 +162,8 @@ inline constexpr float pow4f( const float x ) { return x * x * x * x; }
 inline constexpr float pow5f( const float x ) { return x * x * x * x * x; }
 inline constexpr int sqr( int x ) { return x * x; }
 inline float3 expf( const float3& a ) { return float3( expf( a.x ), expf( a.y ), expf( a.z ) ); }
-
+inline float safercp( const float x ) { return x > 1e-12f ? (1.0f / x) : (x < -1e-12f ? (1.0f / x) : 1e30f); }
+inline float3 safercp( const float3 a ) { return float3( safercp( a.x ), safercp( a.y ), safercp( a.z ) ); }
 inline float2 make_float2( const float a, float b ) { float2 f2; f2.x = a, f2.y = b; return f2; }
 inline float2 make_float2( const float s ) { return make_float2( s, s ); }
 inline float2 make_float2( const float3& a ) { return make_float2( a.x, a.y ); }
@@ -575,7 +589,7 @@ inline float3 diffuseReflection( const float3& N )
 	float3 R;
 	do
 	{
-		R = make_float3( RandomFloat(), RandomFloat(), RandomFloat() ) * 2 - 1;
+		R = make_float3( RandomFloat(), RandomFloat(), RandomFloat() ) * 2.0f - 1.0f;
 	} while (dot( R, R ) > 1);
 	return normalize( dot( R, N ) < 0 ? -R : R );
 }
@@ -607,7 +621,7 @@ inline float3 cosweightedDiffuseReflection( const float3 N )
 	float3 R;
 	do
 	{
-		R = make_float3( RandomFloat(), RandomFloat(), RandomFloat() ) * 2 - 1;
+		R = make_float3( RandomFloat(), RandomFloat(), RandomFloat() ) * 2.0f - 1.0f;
 	} while (dot( R, R ) > 1);
 	return normalize( N + normalize( R ) );
 }
@@ -633,6 +647,7 @@ public:
 	mat4() = default;
 	__declspec(align(64)) float cell[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
 	float& operator [] ( const int idx ) { return cell[idx]; }
+	const float& operator [] ( const int idx ) const { return cell[idx]; }
 	float operator()( const int i, const int j ) const { return cell[i * 4 + j]; }
 	float& operator()( const int i, const int j ) { return cell[i * 4 + j]; }
 	mat4& operator += ( const mat4& a )
@@ -728,9 +743,10 @@ public:
 	CHECK_RESULT mat4 Transposed() const
 	{
 		mat4 M;
-		M[0] = cell[0], M[1] = cell[4], M[2] = cell[8];
-		M[4] = cell[1], M[5] = cell[5], M[6] = cell[9];
-		M[8] = cell[2], M[9] = cell[6], M[10] = cell[10];
+		M[0] = cell[0], M[1] = cell[4], M[2] = cell[8], M[3] = cell[12];
+		M[4] = cell[1], M[5] = cell[5], M[6] = cell[9], M[7] = cell[13];
+		M[8] = cell[2], M[9] = cell[6], M[10] = cell[10], M[11] = cell[14];
+		M[12] = cell[3], M[13] = cell[7], M[14] = cell[11], M[15] = cell[15];
 		return M;
 	}
 	CHECK_RESULT mat4 FastInvertedTransformNoScale() const
@@ -952,31 +968,33 @@ public:
 	}
 	static quat slerp( const quat& a, const quat& b, const float t )
 	{
-		// from https://www.euclideanspace.com/maths/algebra/realNormedAlgebra/quaternions/slerp/index.htm
-		quat qm;
-		float cosHalfTheta = a.w * b.w + a.x * b.x + a.y * b.y + a.z * b.z;
-		if (abs( cosHalfTheta ) >= 1.0)
+		// from GLM, via blog.magnum.graphics/backstage/the-unnecessarily-short-ways-to-do-a-quaternion-slerp
+		quat r = b;
+		float cosTheta = a.w * r.w + a.x * r.x + a.y * r.y + a.z * r.z;
+		if (cosTheta < 0) r = r * -1.0f, cosTheta = -cosTheta;
+		if (cosTheta > 0.99f)
 		{
-			qm.w = a.w, qm.x = a.x, qm.y = a.y, qm.z = a.z;
-			return qm;
+			// Linear interpolation
+			r.w = (1 - t) * a.w + t * r.w;
+			r.x = (1 - t) * a.x + t * r.x;
+			r.y = (1 - t) * a.y + t * r.y;
+			r.z = (1 - t) * a.z + t * r.z;
 		}
-		float halfTheta = acosf( cosHalfTheta );
-		float sinHalfTheta = sqrtf( 1.0f - cosHalfTheta * cosHalfTheta );
-		if (fabs( sinHalfTheta ) < 0.001f)
+		else
 		{
-			qm.w = a.w * 0.5f + b.w * 0.5f, qm.x = a.x * 0.5f + b.x * 0.5f;
-			qm.y = a.y * 0.5f + b.y * 0.5f, qm.z = a.z * 0.5f + b.z * 0.5f;
-			return qm;
+			float angle = acosf( cosTheta );
+			// float s1 = sinf( 1 - t ), s2 = sinf( t * angle ), s3 = sinf( angle );
+			float s1 = sinf( (1 - t) * angle ), s2 = sinf( t * angle ), rs3 = 1.0f / sinf( angle );
+			r.w = (s1 * a.w + s2 * r.w) * rs3;
+			r.x = (s1 * a.x + s2 * r.x) * rs3;
+			r.y = (s1 * a.y + s2 * r.y) * rs3;
+			r.z = (s1 * a.z + s2 * r.z) * rs3;
 		}
-		float ratioA = sinf( (1 - t) * halfTheta ) / sinHalfTheta;
-		float ratioB = sinf( t * halfTheta ) / sinHalfTheta;
-		qm.w = (a.w * ratioA + b.w * ratioB), qm.x = (a.x * ratioA + b.x * ratioB);
-		qm.y = (a.y * ratioA + b.y * ratioB), qm.z = (a.z * ratioA + b.z * ratioB);
-		return qm;
+		return r;
 	}
 	quat operator + ( const quat& q ) const { return quat( w + q.w, x + q.x, y + q.y, z + q.z ); }
 	quat operator - ( const quat& q ) const { return quat( w - q.w, x - q.x, y - q.y, z - q.z ); }
-	quat operator / ( float s ) const { return quat( w / s, x / s, y / s, z / s ); }
+	quat operator / ( float s ) const { const float r = 1.0f / s; return quat( w * r, x * r, y * r, z * r ); }
 	quat operator * ( float s ) const { return scale( s ); }
 	quat scale( float s ) const { return quat( w * s, x * s, y * s, z * s ); }
 	float w = 1, x = 0, y = 0, z = 0;
@@ -1045,6 +1063,34 @@ float3 TransformVector( const float3& a, const mat4& M );
 float3 TransformPosition_SSE( const __m128& a, const mat4& M );
 float3 TransformVector_SSE( const __m128& a, const mat4& M );
 
+// generic swap
+template <class T> void Swap( T& x, T& y ) { T t; t = x, x = y, y = t; }
+
 // Perlin noise
 float noise2D( const float x, const float y );
 float noise3D( const float x, const float y, const float z );
+
+// half-floats
+float half_to_float( const half x );
+half float_to_half( const float x );
+
+// bad float detection (method from OpenCV)
+inline bool isnan( const float value )
+{
+	const uint ieee754 = *reinterpret_cast<const uint*>(&value);
+	return (ieee754 & 0x7fffffff) > 0x7f800000;
+}
+inline bool isinf( const float value )
+{
+	const uint ieee754 = *reinterpret_cast<const uint*>(&value);
+	return (ieee754 & 0x7fffffff) == 0x7f800000;
+}
+inline bool badfloat( const float value )
+{
+	const uint ieee754 = *reinterpret_cast<const uint*>(&value);
+	return (ieee754 & 0x7fffffff) >= 0x7f800000;
+}
+inline bool badfloat3( const float3 v )
+{
+	return badfloat( v.x + v.y + v.z );
+}
