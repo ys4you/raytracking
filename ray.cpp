@@ -6,15 +6,10 @@ Ray::Ray( const float3 origin, const float3 direction, const float rayLength, co
 	// calculate reciprocal ray direction for triangles and AABBs
 	// TODO: prevent NaNs - or don't
 	rD = float3( 1 / D.x, 1 / D.y, 1 / D.z );
-#if 1
-	// this path is a lot faster than the alternative, at least in Visual Studio.
 	uint xsign = *(uint*)&D.x >> 31;
 	uint ysign = *(uint*)&D.y >> 31;
 	uint zsign = *(uint*)&D.z >> 31;
-	Dsign = float3( xsign, ysign, zsign ); // tnx Timon
-#else
-	Dsign = (float3( -copysign( 1.0f, D.x ), -copysign( 1.0f, D.y ), -copysign( 1.0f, D.z ) ) + 1) * 0.5f;
-#endif
+	Dsign = float3( (float)xsign, (float)ysign, (float)zsign ); // tnx Timon
 }
 
 float3 Ray::GetNormal() const
