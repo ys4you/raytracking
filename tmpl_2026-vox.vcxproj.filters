@@ -41,6 +41,8 @@
     <ClCompile Include="camera.cpp" />
     <ClCompile Include="ray.cpp" />
     <ClCompile Include="scene.cpp" />
+    <ClCompile Include="template\Core\Lighting\PointLight.cpp" />
+    <ClCompile Include="template\Core\Lighting\DirectionalLight.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="renderer.h" />
@@ -92,6 +94,10 @@
     <ClInclude Include="ray.h" />
     <ClInclude Include="camera.h" />
     <ClInclude Include="scene.h" />
+    <ClInclude Include="template\Core\ShadingPoint.h" />
+    <ClInclude Include="template\Core\Lighting\Light.h" />
+    <ClInclude Include="template\Core\Lighting\PointLight.h" />
+    <ClInclude Include="template\Core\Lighting\DirectionalLight.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="template">

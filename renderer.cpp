@@ -1,23 +1,42 @@
 #include "template.h"
 
+#include "Core/ShadingPoint.h"
+#include "Core/Lighting/Light.h"
+#include "Core/Lighting/PointLight.h"
+
 // -----------------------------------------------------------
 // Calculate light transport via a ray
 // -----------------------------------------------------------
-float3 Renderer::Trace( Ray& ray, int, int, int /* we'll use these later */ )
+float3 Renderer::Trace(Ray& ray, int, int, int)
 {
-	scene.FindNearest( ray );
-	if (ray.voxel == 0) return float3( 0 ); // or a fancy sky color
-	float3 N = ray.GetNormal();
-	float3 I = ray.IntersectionPoint();
-	float3 albedo = ray.GetAlbedo();
-	return (N + 1) * 0.5f;
+	scene.FindNearest(ray);
+	if (ray.voxel == 0) return float3(0);
+
+	ShadingPoint sp;
+	sp.position = ray.IntersectionPoint();
+	sp.normal = ray.GetNormal();
+	sp.albedo = ray.GetAlbedo();
+
+	float3 result(0);
+
+	for (Light* light : lights)
+		result += light->Illuminate(sp, scene);
+
+	return result;
 }
+
 
 // -----------------------------------------------------------
 // Application initialization - Executed once, at app start
 // -----------------------------------------------------------
 void Renderer::Init()
 {
+	lights.insert(lights.end(), {
+		new PointLight({1,1,1}, {1,1,1}),
+		new PointLight({1,1,1}, {1,0.8f,0.6f})
+		});
+
+
 }
 
 // -----------------------------------------------------------

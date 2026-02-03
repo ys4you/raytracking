@@ -1,5 +1,7 @@
 #pragma once
 
+class Light;
+
 namespace Tmpl8
 {
 
@@ -32,6 +34,9 @@ public:
 	float3* history;		// for episode 5
 	Scene scene;
 	Camera camera;
+
+	std::vector<Light*> lights;
+
 };
 
 } // namespace Tmpl8

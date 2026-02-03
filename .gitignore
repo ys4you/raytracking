@@ -1,0 +1,70 @@
+# ====================
+# Visual Studio general
+# ====================
+.vs/
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.opensdf
+*.sdf
+*.cachefile
+
+# ====================
+# Build outputs
+# ====================
+[Bb]in/
+[Dd]ebug*/
+[Rr]elease*/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+build/
+out/
+*.exe
+*.dll
+*.lib
+*.app
+*.o
+*.a
+*.so
+*.dylib
+
+# ====================
+# IntelliSense and related caches
+# ====================
+*.ipch/
+*.iobj
+*.ipdb
+*.VC.db
+*.VC.VC.opendb
+*.opensdf
+*.tlog/
+*.lastbuildstate
+*.sdf
+*.log
+
+# ====================
+# Visual Studio project/user files
+# ====================
+*.vcxproj.user
+*.vcxproj.filters
+*.vsconfig
+
+# ====================
+# CMake / Make
+# ====================
+CMakeFiles/
+CMakeCache.txt
+cmake-build-*/
+Makefile
+*.cmake
+
+# ====================
+# OS / editor files
+# ====================
+*.DS_Store
+*.swp
+*.swo
