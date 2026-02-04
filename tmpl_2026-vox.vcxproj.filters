@@ -43,6 +43,7 @@
     <ClCompile Include="scene.cpp" />
     <ClCompile Include="template\Core\Lighting\PointLight.cpp" />
     <ClCompile Include="template\Core\Lighting\DirectionalLight.cpp" />
+    <ClCompile Include="template\Core\Lighting\SpotLight.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="renderer.h" />
@@ -98,6 +99,7 @@
     <ClInclude Include="template\Core\Lighting\Light.h" />
     <ClInclude Include="template\Core\Lighting\PointLight.h" />
     <ClInclude Include="template\Core\Lighting\DirectionalLight.h" />
+    <ClInclude Include="template\Core\Lighting\SpotLight.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="template">

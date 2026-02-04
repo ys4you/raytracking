@@ -4,13 +4,13 @@
 #include "Core/ShadingPoint.h"
 
 DirectionalLight::DirectionalLight(const float3& dir, const float3& c)
-    : dir(dir), color(c)
+    : direction(dir), color(c)
 {
 }
 
 float3 DirectionalLight::Illuminate(const ShadingPoint& sp, Scene& scene) const
 {
-    const float3 Ldir = -dir; // light coming FROM direction
+    const float3 Ldir = -direction; // light coming FROM direction
 
     // Shadow ray (infinite distance)
     const float EPS = 0.001f;

@@ -62,8 +62,8 @@ bool Camera::HandleInput( const float t )
 	if (IsKeyDown( GLFW_KEY_D )) camPos += speed * right, changed = true;
 	if (GetAsyncKeyState( 'W' )) camPos += speed * ahead, changed = true;
 	if (IsKeyDown( GLFW_KEY_S )) camPos -= speed * ahead, changed = true;
-	if (IsKeyDown( GLFW_KEY_R )) camPos += speed * up, changed = true;
-	if (IsKeyDown( GLFW_KEY_F )) camPos -= speed * up, changed = true;
+	if (IsKeyDown( GLFW_KEY_SPACE )) camPos += speed * up, changed = true;
+	if (IsKeyDown( GLFW_KEY_LEFT_CONTROL )) camPos -= speed * up, changed = true;
 	camTarget = camPos + ahead;
 	ahead = normalize( camTarget - camPos );
 	up = normalize( cross( ahead, right ) );

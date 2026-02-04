@@ -5,7 +5,8 @@
 class DirectionalLight :
     public Light
 {
-    float3 dir;
+public:
+    float3 direction;
     float3 color;
 
     DirectionalLight(const float3& dir, const float3& c);

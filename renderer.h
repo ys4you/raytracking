@@ -1,6 +1,9 @@
 #pragma once
 
 class Light;
+class PointLight;
+class DirectionalLight;
+class SpotLight;
 
 namespace Tmpl8
 {
@@ -8,6 +11,12 @@ namespace Tmpl8
 class Renderer : public TheApp
 {
 public:
+	float avgFrameTimeMs = 16.67f; // smoothed frame time
+	float fps = 60.f;
+	float rps = 0.f; // million rays per second
+
+
+
 	// game flow methods
 	void Init();
 	float3 Trace( Ray& ray, int = 0, int = 0, int = 0 );
@@ -35,7 +44,12 @@ public:
 	Scene scene;
 	Camera camera;
 
+
+	// Lights
 	std::vector<Light*> lights;
+	PointLight* pointLight = nullptr;
+	DirectionalLight* dirLight = nullptr;
+	SpotLight* spotLight = nullptr;
 
 };
 
