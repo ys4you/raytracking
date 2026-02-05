@@ -53,7 +53,7 @@ public:
 	uint Get(const uint x, const uint y, const uint z) const;
 
 
-	uint* topGrid;      // TOP_SIZE³ = 4096 entries
+	uint* topGrid;      // TOP_SIZE = 4096 entries
 	Brick* bricks;      // Array of bricks
 	uint brickCount;    // Number of allocated bricks
 

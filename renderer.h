@@ -4,6 +4,7 @@ class Light;
 class PointLight;
 class DirectionalLight;
 class SpotLight;
+class AreaLight;
 
 namespace Tmpl8
 {
@@ -50,6 +51,7 @@ public:
 	PointLight* pointLight = nullptr;
 	DirectionalLight* dirLight = nullptr;
 	SpotLight* spotLight = nullptr;
+	AreaLight* areaLight = nullptr;
 
 };
 

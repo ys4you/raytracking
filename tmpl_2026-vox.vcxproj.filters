@@ -44,6 +44,7 @@
     <ClCompile Include="template\Core\Lighting\PointLight.cpp" />
     <ClCompile Include="template\Core\Lighting\DirectionalLight.cpp" />
     <ClCompile Include="template\Core\Lighting\SpotLight.cpp" />
+    <ClCompile Include="template\Core\Lighting\AreaLight.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="renderer.h" />
@@ -100,6 +101,7 @@
     <ClInclude Include="template\Core\Lighting\PointLight.h" />
     <ClInclude Include="template\Core\Lighting\DirectionalLight.h" />
     <ClInclude Include="template\Core\Lighting\SpotLight.h" />
+    <ClInclude Include="template\Core\Lighting\AreaLight.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="template">

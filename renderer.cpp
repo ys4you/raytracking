@@ -4,6 +4,7 @@
 #include "Core/Lighting/PointLight.h"
 #include "Core/Lighting/DirectionalLight.h"
 #include "Core/Lighting/SpotLight.h"
+#include "Core/Lighting/AreaLight.h"
 
 // -----------------------------------------------------------
 // Calculate light transport via a ray
@@ -40,9 +41,25 @@ void Renderer::Init()
 	dirLight->enabled = false;
 
 	spotLight = new SpotLight({ 1.5f,1.5f,1.4f }, { -0.57f,-0.58f,-0.5f }, { 1,1,0.8f }, 10.f);
-	spotLight->enabled = true;
+	spotLight->enabled = false;
 
-	lights = { pointLight, dirLight, spotLight };
+    float3 center = float3(0, 5, 0);
+
+    float3 edge1 = float3(4, 0, 0);   // width
+    float3 edge2 = float3(0, 0, 2);   // height
+
+    float3 corner = center - edge1 * 0.5f - edge2 * 0.5f;
+
+    areaLight = new AreaLight(
+        corner,
+        edge1,
+        edge2,
+        float3(10.0f, 10.0f, 10.0f), // bright white (area lights need energy)  with 1,1,1... lights are dim
+        16, 16                         // 16 samples total
+    );
+
+
+	lights = { pointLight, dirLight, spotLight, areaLight };
 }
 
 // -----------------------------------------------------------
@@ -120,7 +137,18 @@ void Renderer::UI()
                 sl->edgeRoughness = clamp(sl->edgeRoughness, 0.0f, 0.99f);
             }
         }
-
+        else if (AreaLight* al = dynamic_cast<AreaLight*>(light))
+        {
+            if (ImGui::CollapsingHeader("Area Light##Header", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                ImGui::ColorEdit3("Color", &al->color.x);   // stays 0–1
+                ImGui::DragFloat("Intensity", &al->intensity, 0.1f, 0.0f, 1000.0f);
+                ImGui::Spacing();
+                ImGui::DragFloat3("Corner", &al->corner.x, 0.1f);
+                ImGui::DragFloat3("Edge 1", &al->edge1.x, 0.1f);
+                ImGui::DragFloat3("Edge 2", &al->edge2.x, 0.1f);
+            }
+        }
         ImGui::PopID();
     }
 

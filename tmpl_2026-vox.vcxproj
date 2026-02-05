@@ -122,6 +122,7 @@
   </ItemDefinitionGroup>
   <!-- END Custom section -->
   <ItemGroup>
+    <ClCompile Include="template\Core\Lighting\AreaLight.cpp" />
     <ClCompile Include="template\Core\Lighting\DirectionalLight.cpp" />
     <ClCompile Include="lib\imgui\imgui.cpp" />
     <ClCompile Include="lib\imgui\imgui_demo.cpp">
@@ -147,6 +148,7 @@
     <ClCompile Include="renderer.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="template\Core\Lighting\AreaLight.h" />
     <ClInclude Include="camera.h" />
     <ClInclude Include="template\Core\Lighting\DirectionalLight.h" />
     <ClInclude Include="lib\imgui\imconfig.h" />
