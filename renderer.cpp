@@ -6,27 +6,116 @@
 #include "Core/Lighting/SpotLight.h"
 #include "Core/Lighting/AreaLight.h"
 
+
+
 // -----------------------------------------------------------
 // Calculate light transport via a ray
 // -----------------------------------------------------------
-float3 Renderer::Trace(Ray& ray, int, int, int)
+float3 Renderer::Trace(Ray& ray, int depth, int, int)
 {
-	scene.FindNearest(ray);
-	if (ray.voxel == 0) return float3(0.53f, 0.81f, 0.92f); // background color
+    const int MAX_DEPTH = 5;
+    if (depth >= MAX_DEPTH) return float3(0, 0, 0);
 
-	ShadingPoint sp;
-	sp.position = ray.IntersectionPoint();
-	sp.normal = ray.GetNormal();
-	sp.albedo = ray.GetAlbedo();
+    // Find nearest intersection
+    scene.FindNearest(ray);
 
-	float3 result(0);
+    // Background (sky)
+    if (ray.voxel == 0)
+        return float3(0.53f, 0.81f, 0.92f);
 
-	for (Light* light : lights)
-		if (light->enabled)
-			result += light->Illuminate(sp, scene);
+    // Shading info
+    ShadingPoint sp;
+    sp.position = ray.IntersectionPoint();
+    sp.normal = ray.GetNormal();
+    sp.albedo = ray.GetAlbedo();
 
-	return result;
+    const Material& mat = ray.hitMaterial;
+
+    // ---------------------------
+    // Debug: show normals only
+    // ---------------------------
+    if (debugNormals)
+    {
+        // Map from [-1,1] to [0,1]
+        return 0.5f * (sp.normal + float3(1.0f));
+    }
+
+    float3 result(0);
+
+    // ---------------------------
+    // Handle material types
+    // ---------------------------
+    switch (mat.type)
+    {
+    case MaterialType::Lambertian:
+    {
+        // Accumulate lighting
+        for (Light* light : lights)
+            if (light->enabled)
+                result += light->Illuminate(sp, scene);
+
+        // Multiply by albedo
+        return result * mat.albedo;
+    }
+
+    case MaterialType::Metal:
+    {
+        float3 N = sp.normal;
+        float3 R = normalize(ray.D - 2.0f * dot(ray.D, N) * N);
+
+        // Add roughness (diffuse reflection)
+        if (mat.roughness > 0.0f)
+            R += mat.roughness * RandomInUnitSphere();
+        R = normalize(R);
+
+        Ray aRay(sp.position + N * EPSILON, R);
+        // Trace reflection
+        return Trace(aRay, depth + 1) * mat.albedo;
+    }
+
+    case MaterialType::Dielectric:
+    {
+        float3 N = sp.normal;
+        float3 I = normalize(ray.D);
+        float3 refracted;
+        float ni_over_nt = dot(I, N) > 0 ? mat.ior : 1.0f / mat.ior;
+        float reflect_prob = 1.0f;
+
+        if (Refract(I, N, ni_over_nt, refracted))
+            reflect_prob = Schlick(dot(I, N), mat.ior);
+
+        if (RandomFloat() < reflect_prob)
+        {
+            Ray Ray(sp.position + N * EPSILON, reflect(I, N));
+            return Trace(Ray, depth + 1);
+        }
+        else
+        {
+            Ray Ray(sp.position - N * EPSILON, refracted);
+            return Trace(Ray, depth + 1);
+        }
+    }
+
+    case MaterialType::Emissive:
+        return mat.emission * mat.emissionStr;
+    }
+
+    // Fallback debug color
+    return float3(1, 0, 1);
 }
+
+/*
+float3 Renderer::Trace( Ray& ray, int depth, int, int )w
+{
+scene.FindNearest( ray );
+if (ray.voxel == 0) return float3( 0.5f, 0.6f, 1.0f ); // or a fancy sky color
+float3 N = ray.GetNormal();
+float3 I = ray.IntersectionPoint();
+float3 albedo = ray.GetAlbedo();
+static const float3 L = normalize( float3( 3, 2, 1 ) );
+return albedo * max( 0.3f, dot( N, L ) );
+}
+ **/
 
 // -----------------------------------------------------------
 // Application initialization - Executed once, at app start
@@ -37,8 +126,8 @@ void Renderer::Init()
 	pointLight = new PointLight({ 1,1,1 }, { 1,1,1 });
 	pointLight->enabled = false;
 
-	dirLight = new DirectionalLight({ 0.f,-1.f,0.f }, { 1,1,1 });
-	dirLight->enabled = false;
+	dirLight = new DirectionalLight({ 0.3f, -0.35f,0.9f }, { 1,1,1 });
+    dirLight->enabled = true;
 
 	spotLight = new SpotLight({ 1.5f,1.5f,1.4f }, { -0.57f,-0.58f,-0.5f }, { 1,1,0.8f }, 10.f);
 	spotLight->enabled = false;
@@ -58,8 +147,13 @@ void Renderer::Init()
         16, 16                         // 16 samples total
     );
 
+    areaLight->enabled = false;
 
 	lights = { pointLight, dirLight, spotLight, areaLight };
+
+    //accumulator
+    accumulator = new float3[SCRWIDTH * SCRHEIGHT];
+    memset(accumulator, 0, SCRWIDTH * SCRHEIGHT * sizeof(float3));
 }
 
 // -----------------------------------------------------------
@@ -96,7 +190,8 @@ void Renderer::UI()
     Ray r = camera.GetPrimaryRay((float)mousePos.x, (float)mousePos.y);
     scene.FindNearest(r);
     ImGui::Text("voxel: %i", r.voxel);
-
+    ImGui::Separator();
+    ImGui::Checkbox("Show Normals", &debugNormals);
     ImGui::Separator();
     ImGui::Text("Lights");
 

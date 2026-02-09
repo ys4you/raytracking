@@ -11,7 +11,7 @@ SpotLight::SpotLight(float3 pos, float3 dir, float3 col, float falloff)
 constexpr float DEG2RAD = 3.14159265359f / 180.0f;
 float3 SpotLight::Illuminate(const ShadingPoint& sp, Scene& scene) const
 {
-    const float EPS = 0.005f;
+    const float EPS = 0.05f;
 
     float3 toPoint = sp.position - position;
     float distance = length(toPoint);

@@ -10,18 +10,19 @@ DirectionalLight::DirectionalLight(const float3& dir, const float3& c)
 
 float3 DirectionalLight::Illuminate(const ShadingPoint& sp, Scene& scene) const
 {
-    const float3 Ldir = -direction; // light coming FROM direction
+    const float3 Ldir = normalize(-direction);
 
-    // Shadow ray (infinite distance)
-    const float EPS = 0.001f;
+    //voxel-based epsilon - Claude
+    const float voxelSize = 1.0f / 128.0f;
+    const float EPS = voxelSize * .5f;
+
     Ray shadowRay(
         sp.position + sp.normal * EPS,
-        Ldir,
-        1e30f
+        Ldir
     );
 
     if (scene.IsOccluded(shadowRay))
-        return float3(0);  // NOLINT(modernize-return-braced-init-list)
+        return float3(0);
 
     const float ndotl = max(0.0f, dot(sp.normal, Ldir));
     return color * sp.albedo * ndotl;

@@ -15,8 +15,13 @@ public:
 
     inline float3 SamplePoint(int u, int v) const
     {
-        float du = (u + RandomFloat()) / uSteps;
-        float dv = (v + RandomFloat()) / vSteps;
+        //Random points - old solution
+        //float du = (u + RandomFloat()) / uSteps;
+        //float dv = (v + RandomFloat()) / vSteps;
+
+        //Riemann Sum - New Solution 
+        float du = (u + 0.5f) / uSteps;
+        float dv = (v + 0.5f) / vSteps;
         return corner + edge1 * du + edge2 * dv;
     }
 

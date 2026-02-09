@@ -20,7 +20,7 @@ AreaLight::AreaLight(const float3& c, const float3& e1, const float3& e2, const 
 }
 float3 AreaLight::Illuminate(const ShadingPoint& sp, Scene& scene) const
 {
-    const float EPS = 0.001f;
+    const float EPS = 0.05f;
     float3 result(0.0f);
     int samples = uSteps * vSteps;
 
