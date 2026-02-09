@@ -154,6 +154,7 @@ void Renderer::Init()
     //accumulator
     accumulator = new float3[SCRWIDTH * SCRHEIGHT];
     memset(accumulator, 0, SCRWIDTH * SCRHEIGHT * sizeof(float3));
+
 }
 
 // -----------------------------------------------------------
@@ -161,24 +162,42 @@ void Renderer::Init()
 // -----------------------------------------------------------
 void Renderer::Tick(float deltaTime)
 {
-	static Timer frameTimer;
-	float frameTime = frameTimer.elapsed(); // time since last frame
-	frameTimer.reset();
+    // Reset accumulation if camera moved
+    if (camera.HandleInput(deltaTime))
+    {
+        ResetAccumulator();
+    }
 
-	// pixel loop (OpenMP can be enabled for parallelism)
+    // New sample this frame
+    sampleCount++;
+    const float invSampleCount = 1.0f / sampleCount;
+
 #pragma omp parallel for schedule(dynamic)
-	for (int y = 0; y < SCRHEIGHT; y++)
-	{
-		for (int x = 0; x < SCRWIDTH; x++)
-		{
-			Ray r = camera.GetPrimaryRay((float)x, (float)y);
-			float3 pixel = Trace(r);
-			screen->pixels[x + y * SCRWIDTH] = RGBF32_to_RGB8(pixel);
-		}
-	}
+    for (int y = 0; y < SCRHEIGHT; y++)
+    {
+        for (int x = 0; x < SCRWIDTH; x++)
+        {
+            const int idx = x + y * SCRWIDTH;
+            InitSeed(idx);
+            // Optional subpixel jitter (recommended)
+            float px = x + RandomFloat();
+            float py = y + RandomFloat();
 
-	// handle user input
-	camera.HandleInput(deltaTime);
+            Ray r = camera.GetPrimaryRay(px, py);
+
+            // One sample
+            float3 sample = Trace(r, 0, 0, 0);
+
+            // Accumulate
+            accumulator[idx] += sample;
+
+            // Average
+            float3 avg = accumulator[idx] * invSampleCount;
+
+            // Display
+            screen->pixels[idx] = RGBF32_to_RGB8(avg);
+        }
+    }
 }
 
 // -----------------------------------------------------------
@@ -252,4 +271,21 @@ void Renderer::UI()
     // Display FPS and Mrays/sec in ImGui
     ImGui::Text("%5.2f ms (%.1f FPS) - %.1f Mrays/s", avgFrameTimeMs, fps, rps);
 }
+
+void Tmpl8::Renderer::InitAccumulator()
+{
+    if (!accumulator) 
+    {
+        accumulator =  static_cast<float3*>MALLOC64(SCRWIDTH * SCRHEIGHT * sizeof(float3));
+    }
+    ResetAccumulator();
+}
+
+//Claude helped
+void Tmpl8::Renderer::ResetAccumulator()
+{
+    memset(accumulator, 0, SCRWIDTH * SCRHEIGHT * sizeof(float3));
+    sampleCount = 0;
+}
+
 

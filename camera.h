@@ -15,9 +15,13 @@ public:
 	~Camera();
 	Ray GetPrimaryRay( const float x, const float y );
 	bool HandleInput( const float t );
+	bool CameraHasMoved();
 	float aspect = (float)SCRWIDTH / (float)SCRHEIGHT;
 	float3 camPos, camTarget;
 	float3 topLeft, topRight, bottomLeft;
+
+	float3 lastCamPos;
+	float3 lastCamTarget;
 };
 
 }

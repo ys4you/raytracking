@@ -2,6 +2,7 @@
 
 Camera::Camera()
 {
+
 	// try to load a camera
 	FILE* f = fopen( "camera.bin", "rb" );
 	if (f)
@@ -18,6 +19,9 @@ Camera::Camera()
 		topRight = float3( aspect, 1, 0 );
 		bottomLeft = float3( -aspect, -1, 0 );
 	}
+
+	lastCamPos = camPos;
+	lastCamTarget = camTarget;
 }
 
 Camera::~Camera()
@@ -73,4 +77,18 @@ bool Camera::HandleInput( const float t )
 	bottomLeft = camPos + 2.0f * ahead - aspect * right - up;
 	if (!changed) return false;
 	return true;
+}
+
+bool Camera::CameraHasMoved()
+{
+	const float eps = 1e-6f;
+
+	if (length(camPos - lastCamPos) > eps ||
+		length(camTarget - lastCamTarget) > eps)
+	{
+		lastCamPos = camPos;
+		lastCamTarget = camTarget;
+		return true;
+	}
+	return false;
 }
