@@ -16,45 +16,30 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
     const int MAX_DEPTH = 5;
     if (depth >= MAX_DEPTH) return float3(0, 0, 0);
 
-    // Find nearest intersection
     scene.FindNearest(ray);
 
-    // Background (sky)
-    if (ray.voxel == 0)
+    // Safety check for background or invalid material
+    if (ray.voxel == 0 || ray.materialIndex < 0 || ray.materialIndex >= MAT_COUNT)
         return float3(0.53f, 0.81f, 0.92f);
 
-    // Shading info
+    const Material& mat = scene.materials[ray.materialIndex];
+
     ShadingPoint sp;
     sp.position = ray.IntersectionPoint();
     sp.normal = ray.GetNormal();
-    sp.albedo = ray.GetAlbedo();
+    sp.albedo = ray.GetAlbedo(scene);
 
-    const Material& mat = ray.hitMaterial;
-
-    // ---------------------------
-    // Debug: show normals only
-    // ---------------------------
     if (debugNormals)
-    {
-        // Map from [-1,1] to [0,1]
         return 0.5f * (sp.normal + float3(1.0f));
-    }
 
-    float3 result(0);
-
-    // ---------------------------
-    // Handle material types
-    // ---------------------------
     switch (mat.type)
     {
     case MaterialType::Lambertian:
     {
-        // Accumulate lighting
+        float3 result(0);
         for (Light* light : lights)
             if (light->enabled)
                 result += light->Illuminate(sp, scene);
-
-        // Multiply by albedo
         return result * mat.albedo;
     }
 
@@ -62,15 +47,18 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
     {
         float3 N = sp.normal;
         float3 R = normalize(ray.D - 2.0f * dot(ray.D, N) * N);
-
-        // Add roughness (diffuse reflection)
         if (mat.roughness > 0.0f)
             R += mat.roughness * RandomInUnitSphere();
         R = normalize(R);
 
         Ray aRay(sp.position + N * EPSILON, R);
-        // Trace reflection
-        return Trace(aRay, depth + 1) * mat.albedo;
+        scene.FindNearest(aRay);
+
+        // Safety check
+        if (aRay.voxel == 0 || aRay.materialIndex < 0 || aRay.materialIndex >= MAT_COUNT)
+            return float3(0.53f, 0.81f, 0.92f);
+
+        return Trace(aRay, depth + 1) * scene.materials[aRay.materialIndex].albedo;
     }
 
     case MaterialType::Dielectric:
@@ -86,13 +74,19 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
 
         if (RandomFloat() < reflect_prob)
         {
-            Ray Ray(sp.position + N * EPSILON, reflect(I, N));
-            return Trace(Ray, depth + 1);
+            Ray reflectedRay(sp.position + N * EPSILON, reflect(I, N));
+            scene.FindNearest(reflectedRay);
+            if (reflectedRay.voxel == 0 || reflectedRay.materialIndex < 0 || reflectedRay.materialIndex >= MAT_COUNT)
+                return float3(0.53f, 0.81f, 0.92f);
+            return Trace(reflectedRay, depth + 1);
         }
         else
         {
-            Ray Ray(sp.position - N * EPSILON, refracted);
-            return Trace(Ray, depth + 1);
+            Ray refractedRay(sp.position - N * EPSILON, refracted);
+            scene.FindNearest(refractedRay);
+            if (refractedRay.voxel == 0 || refractedRay.materialIndex < 0 || refractedRay.materialIndex >= MAT_COUNT)
+                return float3(0.53f, 0.81f, 0.92f);
+            return Trace(refractedRay, depth + 1);
         }
     }
 
@@ -100,11 +94,9 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
         return mat.emission * mat.emissionStr;
     }
 
-    // Fallback debug color
-    return float3(1, 0, 1);
+    return float3(1, 0, 1); // fallback
 }
-
-/*
+/* old version 
 float3 Renderer::Trace( Ray& ray, int depth, int, int )w
 {
 scene.FindNearest( ray );
@@ -162,6 +154,9 @@ void Renderer::Init()
 // -----------------------------------------------------------
 void Renderer::Tick(float deltaTime)
 {
+
+    if (editingMaterial) return; // skip tracing while editing
+
     // Reset accumulation if camera moved
     if (camera.HandleInput(deltaTime))
     {
@@ -208,32 +203,31 @@ void Renderer::UI()
     // Ray query on mouse
     Ray r = camera.GetPrimaryRay((float)mousePos.x, (float)mousePos.y);
     scene.FindNearest(r);
+
     ImGui::Text("voxel: %i", r.voxel);
-    // Display FPS and Mrays/sec in ImGui
     ImGui::Text("%5.2f ms (%.1f FPS) - %.1f Mrays/s", avgFrameTimeMs, fps, rps);
     ImGui::Separator();
     ImGui::Checkbox("Show Normals", &debugNormals);
 
-
     if (ImGui::CollapsingHeader("Lights##Header"))
-    {
         LightUI();
-    }
 
+    editingMaterial = true;
     if (ImGui::CollapsingHeader("Materials##Header"))
     {
-	    if (r.voxel != 0)
-	    {
-	        MaterialUI("Selected Material", r.hitMaterial);
-		    
-	    }
-        MaterialUI("Mirror Material", scene.mirror);
-        MaterialUI("Dielectric Material", scene.dielectric);
-        MaterialUI("Lambertian Material", scene.lambertian);
-    }
+        if (selectionLocked && selectedMaterialIndex != -1)
+            MaterialUI("Selected Material", scene.materials[selectedMaterialIndex]);
 
+        // Always show global editable materials
+        MaterialUI("Mirror Material", scene.materials[MAT_MIRROR]);
+        MaterialUI("Dielectric Material", scene.materials[MAT_DIELECTRIC]);
+        MaterialUI("Lambertian Material", scene.materials[MAT_LAMBERTIAN]);
+    }
+    editingMaterial = false;
 
 }
+
+
 
 void Renderer::LightUI() const
 {
@@ -351,4 +345,26 @@ void Tmpl8::Renderer::ResetAccumulator()
     sampleCount = 0;
 }
 
-
+void Renderer::MouseDown(int button)
+{
+    if (button == 0) // left click: lock
+    {
+        if (!selectionLocked)
+        {
+            editingMaterial = true; // stop tracing
+            Ray r = camera.GetPrimaryRay((float)mousePos.x, (float)mousePos.y);
+            scene.FindNearest(r);
+            if (r.materialIndex != -1)
+            {
+                selectedMaterialIndex = r.materialIndex;
+                selectionLocked = true;
+            }
+            editingMaterial = false;
+        }
+    }
+    else if (button == 1) // right click: unlock
+    {
+        selectedMaterialIndex = -1;
+        selectionLocked = false;
+    }
+}

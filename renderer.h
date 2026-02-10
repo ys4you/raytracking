@@ -59,8 +59,8 @@ public:
 	void MaterialUI(const char* label, Material& material);
 	void Shutdown() { /* nothing here for now */ }
 	// input handling
-	void MouseUp( int button ) { button = 0; /* implement if you want to detect mouse button presses */ }
-	void MouseDown( int button ) { button = 0; /* implement if you want to detect mouse button presses */ }
+	void MouseUp(int button) { button = 0; /* implement if you want to handle keys */ }
+	void MouseDown(int button);
 	void MouseMove( int x, int y )
 	{
 	#if defined(DOUBLESIZE) && !defined(FULLSCREEN)
@@ -95,6 +95,12 @@ public:
 	void InitAccumulator();
 
 	void ResetAccumulator();
+
+	int selectedMaterialIndex = -1; // currently selected material
+	bool selectionLocked = false;    // true if we’ve selected something
+
+	bool editingMaterial = false; 
+
 };
 
 } // namespace Tmpl8

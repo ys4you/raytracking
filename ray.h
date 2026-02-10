@@ -1,6 +1,9 @@
 #pragma once
 #include "Core/Material.h"
 
+namespace Tmpl8 { class Scene; }
+
+
 namespace Tmpl8 {
 
 class Ray
@@ -9,7 +12,7 @@ public:
 	Ray( const float3 origin, const float3 direction, const float rayLength = 1e34f, const uint rgb = 0 );
 	float3 IntersectionPoint() const { return O + t * D; }
 	float3 GetNormal() const;
-	float3 GetAlbedo() const;
+	float3 GetAlbedo(const Scene& scene) const;
 	float GetReflectivity( const float3& I ) const; // TODO: implement
 	float GetRefractivity( const float3& I ) const; // TODO: implement
 	float3 GetAbsorption( const float3& I ) const; // TODO: implement
@@ -22,7 +25,7 @@ public:
 	uint voxel;					// payload of the intersected voxel
 	uint axis = 0;				// axis of last plane passed by the ray
 	bool inside = false;		// if true, ray started in voxel and t is at exit point
-	Material hitMaterial;
+	int materialIndex = -1;
 private:
 	// min3 is used in normal reconstruction.
 	__inline static float3 min3( const float3& a, const float3& b )

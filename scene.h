@@ -10,6 +10,26 @@
 // epsilon
 #define EPSILON		0.00001f
 
+enum MaterialID : uint8_t
+{
+	MAT_LAMBERTIAN = 0,       // Default Lambertian
+	MAT_MIRROR = 1,           // Mirror material
+	MAT_DIELECTRIC = 2,       // Glass material
+
+	// Checkerboard floor
+	MAT_LAMBERTIAN_WHITE = 3,
+	MAT_LAMBERTIAN_GRAY = 4,
+
+	// Colored cubes
+	MAT_RED = 5,
+	MAT_GREEN = 6,
+	MAT_BLUE = 7,
+
+	MAT_COUNT                 // Total number of materials
+};
+
+
+
 struct Material;
 
 namespace Tmpl8 {
@@ -30,11 +50,7 @@ namespace Tmpl8 {
 		bool IsOccluded(Ray& ray) const;
 		void Set(const uint x, const uint y, const uint z, const uint v);
 		unsigned int* grid; // voxel payload is 'unsigned int', interpretation of the bits is free!
-		Material* materials;
-
-		Material mirror;
-		Material dielectric;
-		Material lambertian;
+		std::array<Material, MAT_COUNT> materials;
 
 	private:
 		bool Setup3DDDA(Ray& ray, DDAState& state) const;

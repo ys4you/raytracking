@@ -19,8 +19,8 @@ float3 Ray::GetNormal() const
 	return float3( axis == 0 ? sign.x : 0, axis == 1 ? sign.y : 0, axis == 2 ? sign.z : 0 );
 }
 
-float3 Ray::GetAlbedo() const
+float3 Ray::GetAlbedo(const Scene& scene) const
 {
 	// return the (floating point) albedo at the nearest intersection
-	return RGB8_to_RGBF32( voxel );
+	return scene.materials[voxel].albedo;
 }

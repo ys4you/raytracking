@@ -26,137 +26,96 @@ inline bool point_in_cube(const float3& pos)
 
 Scene::Scene()
 {
-    // allocate room for the world
     grid = (uint*)MALLOC64(WORLDSIZE3 * sizeof(uint));
     memset(grid, 0, WORLDSIZE3 * sizeof(uint));
-    materials = (Material*)MALLOC64(WORLDSIZE3 * sizeof(Material));
-    memset(materials, 0, WORLDSIZE3 * sizeof(Material));
 
-    mirror.type = MaterialType::Metal;
-    mirror.albedo = { 0.9f, 0.9f, 0.95f };  // slightly bluish metal
-    mirror.roughness = 0.05f;
-    mirror.metallic = 1.0f;
+    // Initialize materials
+    materials.fill(Material{});
 
-    dielectric.type = MaterialType::Dielectric;
-    dielectric.albedo = { 1.0f, 1.0f, 1.0f };
-    dielectric.ior = 1.5f;
-    dielectric.roughness = 0.0f;
-    dielectric.metallic = 0.0f;
+    // Lambertian base (optional)
+    materials[MAT_LAMBERTIAN].type = MaterialType::Lambertian;
+    materials[MAT_LAMBERTIAN].albedo = { 0.8f, 0.7f, 0.6f };
 
-    lambertian.type = MaterialType::Lambertian;
-    lambertian.albedo = { 0.8f, 0.7f, 0.6f };
+    // Mirror
+    materials[MAT_MIRROR].type = MaterialType::Metal;
+    materials[MAT_MIRROR].albedo = { 0.9f, 0.9f, 0.95f };
+    materials[MAT_MIRROR].roughness = 0.05f;
+    materials[MAT_MIRROR].metallic = 1.0f;
 
-    // Create a simple floor
+    // Dielectric
+    materials[MAT_DIELECTRIC].type = MaterialType::Dielectric;
+    materials[MAT_DIELECTRIC].albedo = { 1.0f, 1.0f, 1.0f };
+    materials[MAT_DIELECTRIC].ior = 1.5f;
+
+    // Checkerboard floor
+    materials[MAT_LAMBERTIAN_WHITE].type = MaterialType::Lambertian;
+    materials[MAT_LAMBERTIAN_WHITE].albedo = { 0.9f, 0.9f, 0.9f };
+
+    materials[MAT_LAMBERTIAN_GRAY].type = MaterialType::Lambertian;
+    materials[MAT_LAMBERTIAN_GRAY].albedo = { 0.3f, 0.3f, 0.3f };
+
+    // Colored cubes
+    materials[MAT_RED].type = MaterialType::Lambertian;
+    materials[MAT_RED].albedo = { 1.0f, 0.26f, 0.26f };
+
+    materials[MAT_GREEN].type = MaterialType::Lambertian;
+    materials[MAT_GREEN].albedo = { 0.26f, 1.0f, 0.26f };
+
+    materials[MAT_BLUE].type = MaterialType::Lambertian;
+    materials[MAT_BLUE].albedo = { 0.26f, 0.26f, 1.0f };
+
+    // Floor
     for (int z = 0; z < WORLDSIZE; z++)
-    {
         for (int x = 0; x < WORLDSIZE; x++)
-        {
-            for (int y = 0; y < 8; y++)  // floor thickness
+            for (int y = 0; y < 8; y++)
             {
                 int idx = x + y * WORLDSIZE + z * WORLDSIZE2;
-                // Checkerboard pattern
                 bool isWhite = ((x / 8) + (z / 8)) % 2 == 0;
-                Set(x, y, z, isWhite ? 0xCCCCCC : 0x444444);
-                materials[idx] = lambertian;
-                materials[idx].albedo = isWhite ?
-                    float3(0.9f, 0.9f, 0.9f) :
-                    float3(0.3f, 0.3f, 0.3f);
+                grid[idx] = isWhite ? MAT_LAMBERTIAN_WHITE : MAT_LAMBERTIAN_GRAY;
             }
-        }
-    }
 
-    // Helper lambda to create a voxel sphere
-    auto createSphere = [&](int centerX, int centerY, int centerZ, int radius, Material mat, uint color) {
-        for (int z = -radius; z <= radius; z++)
-        {
-            for (int y = -radius; y <= radius; y++)
-            {
-                for (int x = -radius; x <= radius; x++)
-                {
-                    if (x * x + y * y + z * z <= radius * radius)
+    auto createSphere = [&](int cx, int cy, int cz, int r, MaterialID mat) {
+        for (int z = -r; z <= r; z++)
+            for (int y = -r; y <= r; y++)
+                for (int x = -r; x <= r; x++)
+                    if (x * x + y * y + z * z <= r * r)
                     {
-                        int px = centerX + x;
-                        int py = centerY + y;
-                        int pz = centerZ + z;
-
-                        if (px >= 0 && px < WORLDSIZE &&
-                            py >= 0 && py < WORLDSIZE &&
-                            pz >= 0 && pz < WORLDSIZE)
-                        {
-                            int idx = px + py * WORLDSIZE + pz * WORLDSIZE2;
-                            Set(px, py, pz, color);
-                            materials[idx] = mat;
-                        }
+                        int px = cx + x;
+                        int py = cy + y;
+                        int pz = cz + z;
+                        if (px < 0 || py < 0 || pz < 0 ||
+                            px >= WORLDSIZE || py >= WORLDSIZE || pz >= WORLDSIZE) continue;
+                        int idx = px + py * WORLDSIZE + pz * WORLDSIZE2;
+                        grid[idx] = mat;
                     }
-                }
-            }
-        }
         };
 
-    // Create glass spheres at different positions
-    createSphere(40, 20, 40, 12, dielectric, 0xFFFFFF);  // Large glass sphere
-    createSphere(80, 15, 60, 10, dielectric, 0xFFFFFF);  // Medium glass sphere
-    createSphere(90, 12, 90, 8, dielectric, 0xFFFFFF);   // Small glass sphere
+    createSphere(40, 20, 40, 12, MAT_DIELECTRIC);
+    createSphere(80, 15, 60, 10, MAT_DIELECTRIC);
+    createSphere(90, 12, 90, 8, MAT_DIELECTRIC);
+    createSphere(60, 18, 80, 10, MAT_MIRROR);
 
-    // Create a mirror sphere for contrast
-    createSphere(60, 18, 80, 10, mirror, 0xE0E0FF);
-
-    // Create a glass wall/panel
-    for (int z = 30; z < 50; z++)
-    {
-        for (int y = 8; y < 40; y++)
-        {
-            for (int x = 50; x < 54; x++)  // thin wall
-            {
-                int idx = x + y * WORLDSIZE + z * WORLDSIZE2;
-                Set(x, y, z, 0xFFFFFF);
-                materials[idx] = dielectric;
-            }
-        }
-    }
-
-    // Create some colored diffuse cubes for visual interest
-    auto createCube = [&](int x1, int y1, int z1, int size, uint color) {
+    // Simple cubes
+    auto createCube = [&](int x1, int y1, int z1, int size, MaterialID mat) {
         for (int z = z1; z < z1 + size; z++)
-        {
             for (int y = y1; y < y1 + size; y++)
-            {
                 for (int x = x1; x < x1 + size; x++)
-                {
-                    if (x >= 0 && x < WORLDSIZE &&
-                        y >= 0 && y < WORLDSIZE &&
-                        z >= 0 && z < WORLDSIZE)
-                    {
-                        int idx = x + y * WORLDSIZE + z * WORLDSIZE2;
-                        Set(x, y, z, color);
-                        materials[idx] = lambertian;
-                        materials[idx].albedo = float3(
-                            ((color >> 16) & 0xFF) / 255.0f,
-                            ((color >> 8) & 0xFF) / 255.0f,
-                            (color & 0xFF) / 255.0f
-                        );
-                    }
-                }
-            }
-        }
+                    if (x >= 0 && y >= 0 && z >= 0 && x < WORLDSIZE && y < WORLDSIZE && z < WORLDSIZE)
+                        grid[x + y * WORLDSIZE + z * WORLDSIZE2] = mat;
         };
 
-    // Add some colored cubes
-    createCube(20, 8, 20, 10, 0xFF4444);  // Red cube
-    createCube(100, 8, 30, 8, 0x44FF44);  // Green cube
-    createCube(25, 8, 100, 12, 0x4444FF); // Blue cube
+    createCube(20, 8, 20, 10, MAT_RED);    // Red cube
+    createCube(100, 8, 30, 8, MAT_GREEN);  // Green cube
+    createCube(25, 8, 100, 12, MAT_BLUE);  // Blue cube
 
-    // Create a mirror wall (back wall)
+    // Mirror back wall
     for (int y = 8; y < 60; y++)
-    {
         for (int x = 0; x < WORLDSIZE; x++)
         {
             int z = WORLDSIZE - 1;
             int idx = x + y * WORLDSIZE + z * WORLDSIZE2;
-            Set(x, y, z, 0xE0E0E8);
-            materials[idx] = mirror;
+            grid[idx] = MAT_MIRROR;
         }
-    }
 }
 
 void Scene::Set(const uint x, const uint y, const uint z, const uint v)
@@ -262,8 +221,19 @@ void Scene::FindNearest(Ray& ray) const
             int hitX = s.X - s.step.x;
             int hitY = s.Y - s.step.y;
             int hitZ = s.Z - s.step.z;
-            int idx = hitX + hitY * WORLDSIZE + hitZ * WORLDSIZE2;
-            ray.hitMaterial = materials[idx];
+
+            // Bounds check before accessing grid
+            if (hitX >= 0 && hitX < WORLDSIZE &&
+                hitY >= 0 && hitY < WORLDSIZE &&
+                hitZ >= 0 && hitZ < WORLDSIZE)
+            {
+                int idx = hitX + hitY * WORLDSIZE + hitZ * WORLDSIZE2;
+                ray.materialIndex = grid[idx];
+            }
+            else
+            {
+                ray.materialIndex = 0; // or default material
+            }
         }
     }
     else
@@ -320,7 +290,7 @@ void Scene::FindNearest(Ray& ray) const
         if (ray.voxel != 0)
         {
             int idx = s.X + s.Y * WORLDSIZE + s.Z * WORLDSIZE2;
-            ray.hitMaterial = materials[idx];
+            ray.materialIndex = grid[idx];
         }
     }
 
