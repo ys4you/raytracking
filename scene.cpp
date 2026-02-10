@@ -2,6 +2,8 @@
 
 #include "Core/Material.h"
 
+#include "Core/Material.h"
+
 inline float intersect_cube(Ray& ray)
 {
 	// branchless slab method by Tavian
@@ -30,20 +32,17 @@ Scene::Scene()
     materials = (Material*)MALLOC64(WORLDSIZE3 * sizeof(Material));
     memset(materials, 0, WORLDSIZE3 * sizeof(Material));
 
-    Material mirror;
     mirror.type = MaterialType::Metal;
     mirror.albedo = { 0.9f, 0.9f, 0.95f };  // slightly bluish metal
     mirror.roughness = 0.05f;
     mirror.metallic = 1.0f;
 
-    Material dielectric;
     dielectric.type = MaterialType::Dielectric;
     dielectric.albedo = { 1.0f, 1.0f, 1.0f };
     dielectric.ior = 1.5f;
     dielectric.roughness = 0.0f;
     dielectric.metallic = 0.0f;
 
-    Material lambertian;
     lambertian.type = MaterialType::Lambertian;
     lambertian.albedo = { 0.8f, 0.7f, 0.6f };
 

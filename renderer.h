@@ -5,6 +5,7 @@ class PointLight;
 class DirectionalLight;
 class SpotLight;
 class AreaLight;
+class material;
 
 namespace Tmpl8
 {
@@ -54,6 +55,8 @@ public:
 	float3 Trace( Ray& ray, int = 0, int = 0, int = 0 );
 	void Tick( float deltaTime );
 	void UI();
+	void LightUI() const;
+	void MaterialUI(const char* label, Material& material);
 	void Shutdown() { /* nothing here for now */ }
 	// input handling
 	void MouseUp( int button ) { button = 0; /* implement if you want to detect mouse button presses */ }

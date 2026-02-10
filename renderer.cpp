@@ -209,9 +209,35 @@ void Renderer::UI()
     Ray r = camera.GetPrimaryRay((float)mousePos.x, (float)mousePos.y);
     scene.FindNearest(r);
     ImGui::Text("voxel: %i", r.voxel);
+    // Display FPS and Mrays/sec in ImGui
+    ImGui::Text("%5.2f ms (%.1f FPS) - %.1f Mrays/s", avgFrameTimeMs, fps, rps);
     ImGui::Separator();
     ImGui::Checkbox("Show Normals", &debugNormals);
-    ImGui::Separator();
+
+
+    if (ImGui::CollapsingHeader("Lights##Header"))
+    {
+        LightUI();
+    }
+
+    if (ImGui::CollapsingHeader("Materials##Header"))
+    {
+	    if (r.voxel != 0)
+	    {
+	        MaterialUI("Selected Material", r.hitMaterial);
+		    
+	    }
+        MaterialUI("Mirror Material", scene.mirror);
+        MaterialUI("Dielectric Material", scene.dielectric);
+        MaterialUI("Lambertian Material", scene.lambertian);
+    }
+
+
+}
+
+void Renderer::LightUI() const
+{
+
     ImGui::Text("Lights");
 
     int lightIndex = 0;
@@ -222,7 +248,7 @@ void Renderer::UI()
 
         if (PointLight* pl = dynamic_cast<PointLight*>(light))
         {
-            if (ImGui::CollapsingHeader("Point Light##Header", ImGuiTreeNodeFlags_DefaultOpen))
+            if (ImGui::CollapsingHeader("Point Light###Header", ImGuiTreeNodeFlags_DefaultOpen))
             {
                 ImGui::DragFloat3("Position", &pl->position.x, 0.1f);
                 ImGui::ColorEdit3("Color", &pl->color.x);
@@ -267,9 +293,46 @@ void Renderer::UI()
     }
 
     ImGui::Separator();
+}
 
-    // Display FPS and Mrays/sec in ImGui
-    ImGui::Text("%5.2f ms (%.1f FPS) - %.1f Mrays/s", avgFrameTimeMs, fps, rps);
+void Tmpl8::Renderer::MaterialUI(const char* label, Material& material)
+{
+
+    ImGui::Separator();
+    ImGui::Text("%s", label);
+
+    ImGui::PushID(label); 
+
+    static const char* MaterialTypeLabels[] = { "Lambertian", "Metal", "Dielectric", "Emissive" };
+
+    int type = static_cast<int>(material.type);
+    if (ImGui::Combo("Type", &type, MaterialTypeLabels, IM_ARRAYSIZE(MaterialTypeLabels)))
+        material.type = static_cast<MaterialType>(type);
+
+    ImGui::ColorEdit3("Albedo", &material.albedo.x);
+
+    switch (material.type)
+    {
+    case MaterialType::Lambertian:
+        ImGui::SliderFloat("Roughness", &material.roughness, 0.0f, 1.0f);
+        break;
+
+    case MaterialType::Metal:
+        ImGui::SliderFloat("Roughness", &material.roughness, 0.0f, 1.0f);
+        ImGui::SliderFloat("Metallic", &material.metallic, 0.0f, 1.0f);
+        break;
+
+    case MaterialType::Dielectric:
+        ImGui::SliderFloat("IOR", &material.ior, 1.0f, 2.5f);
+        break;
+
+    case MaterialType::Emissive:
+        ImGui::ColorEdit3("Emission", &material.emission.x);
+        ImGui::SliderFloat("Emission Strength", &material.emissionStr, 0.0f, 50.0f);
+        break;
+    }
+
+    ImGui::PopID();
 }
 
 void Tmpl8::Renderer::InitAccumulator()

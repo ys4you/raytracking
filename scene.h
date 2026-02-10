@@ -31,6 +31,11 @@ namespace Tmpl8 {
 		void Set(const uint x, const uint y, const uint z, const uint v);
 		unsigned int* grid; // voxel payload is 'unsigned int', interpretation of the bits is free!
 		Material* materials;
+
+		Material mirror;
+		Material dielectric;
+		Material lambertian;
+
 	private:
 		bool Setup3DDDA(Ray& ray, DDAState& state) const;
 	};
