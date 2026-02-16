@@ -44,9 +44,11 @@ public:
 		r0 = r0 * r0;
 		return r0 + (1 - r0) * powf(1 - cosine, 5);
 	}
-	float avgFrameTimeMs = 16.67f; // smoothed frame time
-	float fps = 60.f;
-	float rps = 0.f; // million rays per second
+
+	float lastFrameTime = 0.0f;     // time of last frame in seconds
+	float avgFrameTimeMs = 0.0f;    // rolling average frame time in ms
+	float fps = 0.0f;               // frames per second
+	float rps = 0.0f;               // millions of rays per second
 
 
 

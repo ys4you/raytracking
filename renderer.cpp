@@ -154,8 +154,8 @@ void Renderer::Init()
 // -----------------------------------------------------------
 void Renderer::Tick(float deltaTime)
 {
-
-    if (editingMaterial) return; // skip tracing while editing
+    // --- Start timing ---
+    auto startTime = std::chrono::high_resolution_clock::now();
 
     // Reset accumulation if camera moved
     if (camera.HandleInput(deltaTime))
@@ -167,6 +167,8 @@ void Renderer::Tick(float deltaTime)
     sampleCount++;
     const float invSampleCount = 1.0f / sampleCount;
 
+    int totalRaysThisFrame = 0;
+
 #pragma omp parallel for schedule(dynamic)
     for (int y = 0; y < SCRHEIGHT; y++)
     {
@@ -174,25 +176,38 @@ void Renderer::Tick(float deltaTime)
         {
             const int idx = x + y * SCRWIDTH;
             InitSeed(idx);
-            // Optional subpixel jitter (recommended)
-            float px = x + RandomFloat();
-            float py = y + RandomFloat();
 
-            Ray r = camera.GetPrimaryRay(px, py);
 
-            // One sample
-            float3 sample = Trace(r, 0, 0, 0);
+            // Anti-aliasing and stochastic aperture sampling
+            int SAMPLES_PER_PIXEL = (camera.aperture > 0.0f) ? 4 : 1;
 
-            // Accumulate
+
+            float3 sample(0, 0, 0);
+            for (int s = 0; s < SAMPLES_PER_PIXEL; ++s)
+            {
+                float px = x + RandomFloat();
+                float py = y + RandomFloat();
+                sample += Trace(camera.GetPrimaryRay(px, py), 0, 0, 0);
+            }
+
+            sample /= float(SAMPLES_PER_PIXEL);
             accumulator[idx] += sample;
 
-            // Average
             float3 avg = accumulator[idx] * invSampleCount;
-
-            // Display
             screen->pixels[idx] = RGBF32_to_RGB8(avg);
+
+            totalRaysThisFrame++;
         }
     }
+
+    // --- End timing ---
+    auto endTime = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<float> frameDuration = endTime - startTime;
+    lastFrameTime = frameDuration.count(); // seconds
+
+    avgFrameTimeMs = lastFrameTime * 1000.0f;
+    fps = 1.0f / lastFrameTime;
+    rps = (float)totalRaysThisFrame / (lastFrameTime * 1000000.0f); // Mrays/s
 }
 
 // -----------------------------------------------------------
@@ -200,8 +215,8 @@ void Renderer::Tick(float deltaTime)
 // -----------------------------------------------------------
 void Renderer::UI()
 {
-    // Ray query on mouse
-    Ray r = camera.GetPrimaryRay((float)mousePos.x, (float)mousePos.y);
+    // Ray query on mouse for info
+    Ray r = camera.GetPinholeRay((float)mousePos.x, (float)mousePos.y);
     scene.FindNearest(r);
 
     ImGui::Text("voxel: %i", r.voxel);
@@ -212,21 +227,23 @@ void Renderer::UI()
     if (ImGui::CollapsingHeader("Lights##Header"))
         LightUI();
 
-    editingMaterial = true;
+    // Materials section
     if (ImGui::CollapsingHeader("Materials##Header"))
     {
+        // Edit selected material if one is locked
         if (selectionLocked && selectedMaterialIndex != -1)
+        {
+            editingMaterial = true; // temporarily pause tracing while editing
             MaterialUI("Selected Material", scene.materials[selectedMaterialIndex]);
+            editingMaterial = false;
+        }
 
-        // Always show global editable materials
+        // Always show global editable materials without locking
         MaterialUI("Mirror Material", scene.materials[MAT_MIRROR]);
         MaterialUI("Dielectric Material", scene.materials[MAT_DIELECTRIC]);
         MaterialUI("Lambertian Material", scene.materials[MAT_LAMBERTIAN]);
     }
-    editingMaterial = false;
-
 }
-
 
 
 void Renderer::LightUI() const
@@ -345,24 +362,25 @@ void Tmpl8::Renderer::ResetAccumulator()
     sampleCount = 0;
 }
 
+
 void Renderer::MouseDown(int button)
 {
-    if (button == 0) // left click: lock
+    if (button == 0) // left click: select material
     {
         if (!selectionLocked)
         {
-            editingMaterial = true; // stop tracing
-            Ray r = camera.GetPrimaryRay((float)mousePos.x, (float)mousePos.y);
+            // Use pinhole ray for stable selection
+            Ray r = camera.GetPinholeRay((float)mousePos.x, (float)mousePos.y);
             scene.FindNearest(r);
+
             if (r.materialIndex != -1)
             {
                 selectedMaterialIndex = r.materialIndex;
                 selectionLocked = true;
             }
-            editingMaterial = false;
         }
     }
-    else if (button == 1) // right click: unlock
+    else if (button == 1) // right click: unlock selection
     {
         selectedMaterialIndex = -1;
         selectionLocked = false;
