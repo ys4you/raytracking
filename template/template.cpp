@@ -80,6 +80,36 @@ void ErrorCallback( int, const char* description )
 	fprintf( stderr, "GLFW Error: %s\n", description );
 }
 
+static void ApplyUnityStyle()
+{
+	ImGuiStyle& s = ImGui::GetStyle();
+
+	// Shape
+	s.WindowRounding = 4.0f;
+	s.FrameRounding = 3.0f;
+	s.ChildRounding = 4.0f;
+
+	// Spacing (Unity-like density)
+	s.ItemSpacing = ImVec2(6, 4);
+	s.FramePadding = ImVec2(6, 3);
+	s.IndentSpacing = 14.0f;
+
+	// Reduce boxiness
+	s.FrameBorderSize = 0.0f;
+	s.ChildBorderSize = 1.0f;
+
+	// Make sliders feel less tall
+	s.GrabMinSize = 10.0f;
+
+	ImVec4* c = ImGui::GetStyle().Colors;
+	c[ImGuiCol_WindowBg] = ImVec4(0.18f, 0.18f, 0.18f, 1.00f);
+	c[ImGuiCol_ChildBg] = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
+	c[ImGuiCol_FrameBg] = ImVec4(0.25f, 0.25f, 0.25f, 1.00f);
+	c[ImGuiCol_FrameBgHovered] = ImVec4(0.30f, 0.30f, 0.30f, 1.00f);
+	c[ImGuiCol_Header] = ImVec4(0.23f, 0.38f, 0.60f, 1.00f);
+	c[ImGuiCol_HeaderHovered] = ImVec4(0.28f, 0.44f, 0.68f, 1.00f);
+}
+
 // Application entry point
 void main()
 {
@@ -153,7 +183,8 @@ void main()
 	ImGui::CreateContext();
 	ImGui_ImplGlfw_InitForOpenGL( window, true );
 	ImGui_ImplOpenGL3_Init( 0 );
-	ImGui::StyleColorsDark();
+	//ImGui::StyleColorsDark();
+	ApplyUnityStyle();
 	ImGuiIO& io = ImGui::GetIO();
 	io.IniFilename = "./imgui.ini";
 	// basic shader: apply gamma correction

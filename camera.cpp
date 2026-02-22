@@ -20,9 +20,9 @@ Camera::Camera()
 		bottomLeft = float3( -aspect, -1, 0 );
 	}
 
-	aperture = 0.1f;
-	focusRange = float2(0.1f, .0f); // Focus on objects 4-6 units away
-	blurFactor = 1.f;
+	aperture = 0.0f;
+	focusRange = float2(0.0f, .0f); // Focus on objects 4-6 units away
+	blurFactor = .0f;
 
 
 	lastCamPos = camPos;

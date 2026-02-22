@@ -109,11 +109,33 @@ return albedo * max( 0.3f, dot( N, L ) );
 }
  **/
 
+
+
+
 // -----------------------------------------------------------
 // Application initialization - Executed once, at app start
 // -----------------------------------------------------------
 void Renderer::Init()
 {
+    //blue noise
+	//I am puting it in an uint8_t rather then keeping it in surface since surface has a uint21_t.
+    //That would be more bytes for each first frame to load. less efficient
+    Surface* bn = new Surface("assets/BlueNoise256x256.png");
+
+    assert(bn->width == BN_SIZE && bn->height == BN_SIZE);
+
+    blueNoise = new uint8_t[BN_SIZE * BN_SIZE];
+
+    for (int i = 0; i < BN_SIZE * BN_SIZE; i++)
+    {
+        uint p = bn->pixels[i];
+        blueNoise[i] = (uint8_t)((p >> 16) & 255); // take R channel
+    }
+
+    delete bn;
+
+
+
 	// Create lights
 	pointLight = new PointLight({ 1,1,1 }, { 1,1,1 });
 	pointLight->enabled = false;
@@ -163,9 +185,12 @@ void Renderer::Tick(float deltaTime)
         ResetAccumulator();
     }
 
-    // New sample this frame
+    // Advance sample index
     sampleCount++;
     const float invSampleCount = 1.0f / sampleCount;
+
+    // Seed RNG ONCE per frame
+    InitSeed(sampleCount);
 
     int totalRaysThisFrame = 0;
 
@@ -175,172 +200,218 @@ void Renderer::Tick(float deltaTime)
         for (int x = 0; x < SCRWIDTH; x++)
         {
             const int idx = x + y * SCRWIDTH;
-            InitSeed(idx);
 
+            // Number of samples per pixel
+            const int SAMPLES_PER_PIXEL = (camera.aperture > 0.0f) ? 4 : 1;
 
-            // Anti-aliasing and stochastic aperture sampling
-            int SAMPLES_PER_PIXEL = (camera.aperture > 0.0f) ? 4 : 1;
+            float3 sample(0.0f);
 
-
-            float3 sample(0, 0, 0);
             for (int s = 0; s < SAMPLES_PER_PIXEL; ++s)
             {
-                float px = x + RandomFloat();
-                float py = y + RandomFloat();
+                // Blue-noise jitter for ALL samples
+                float jx = BlueNoise(x + s * 17, y + s * 31, sampleCount);
+                float jy = BlueNoise(y + s * 13, x + s * 29, sampleCount);
+
+                float px = x + jx;
+                float py = y + jy;
+
                 sample += Trace(camera.GetPrimaryRay(px, py), 0, 0, 0);
             }
 
-            sample /= float(SAMPLES_PER_PIXEL);
+            // Average per-pixel samples
+            sample *= (1.0f / SAMPLES_PER_PIXEL);
+
+            // Accumulate
             accumulator[idx] += sample;
 
-            float3 avg = accumulator[idx] * invSampleCount;
-            screen->pixels[idx] = RGBF32_to_RGB8(avg);
+            // Display running average
+            screen->pixels[idx] =
+                RGBF32_to_RGB8(accumulator[idx] * invSampleCount);
 
-            totalRaysThisFrame++;
+            totalRaysThisFrame += SAMPLES_PER_PIXEL;
         }
     }
 
     // --- End timing ---
     auto endTime = std::chrono::high_resolution_clock::now();
     std::chrono::duration<float> frameDuration = endTime - startTime;
-    lastFrameTime = frameDuration.count(); // seconds
+    lastFrameTime = frameDuration.count();
 
     avgFrameTimeMs = lastFrameTime * 1000.0f;
     fps = 1.0f / lastFrameTime;
     rps = (float)totalRaysThisFrame / (lastFrameTime * 1000000.0f); // Mrays/s
 }
-
-// -----------------------------------------------------------
+// ----------------------------------------------------------- 
 // Update user interface (imgui)
 // -----------------------------------------------------------
 void Renderer::UI()
 {
-    // Ray query on mouse for info
-    Ray r = camera.GetPinholeRay((float)mousePos.x, (float)mousePos.y);
-    scene.FindNearest(r);
+    ImGui::Begin("Inspector");
 
-    ImGui::Text("voxel: %i", r.voxel);
-    ImGui::Text("%5.2f ms (%.1f FPS) - %.1f Mrays/s", avgFrameTimeMs, fps, rps);
+    // ===== RUNTIME STATS =====
+    ImGui::BeginChild("Stats", ImVec2(0, 90), true);
+    ImGui::Text("Renderer");
     ImGui::Separator();
-    ImGui::Checkbox("Show Normals", &debugNormals);
+    ImGui::Text("Voxel: %i",
+        camera.GetPinholeRay((float)mousePos.x, (float)mousePos.y).voxel);
+    ImGui::Text("%.2f ms | %.1f FPS", avgFrameTimeMs, fps);
+    ImGui::Text("%.1f Mrays/s", rps);
+    ImGui::EndChild();
 
-    if (ImGui::CollapsingHeader("Lights##Header"))
-        LightUI();
+    ImGui::Spacing();
 
-    // Materials section
-    if (ImGui::CollapsingHeader("Materials##Header"))
+    // ===== DEBUG =====
+    if (ImGui::CollapsingHeader("Debug", ImGuiTreeNodeFlags_DefaultOpen))
     {
-        // Edit selected material if one is locked
+        ImGui::Indent();
+        ImGui::Checkbox("Show Normals", &debugNormals);
+        ImGui::Unindent();
+    }
+
+    ImGui::Spacing();
+
+    // ===== LIGHTS =====
+    if (ImGui::CollapsingHeader("Lights", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        LightUI();
+    }
+
+    ImGui::Spacing();
+
+    // ===== MATERIALS =====
+    if (ImGui::CollapsingHeader("Materials", ImGuiTreeNodeFlags_DefaultOpen))
+    {
         if (selectionLocked && selectedMaterialIndex != -1)
         {
-            editingMaterial = true; // temporarily pause tracing while editing
             MaterialUI("Selected Material", scene.materials[selectedMaterialIndex]);
-            editingMaterial = false;
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
         }
 
-        // Always show global editable materials without locking
-        MaterialUI("Mirror Material", scene.materials[MAT_MIRROR]);
-        MaterialUI("Dielectric Material", scene.materials[MAT_DIELECTRIC]);
-        MaterialUI("Lambertian Material", scene.materials[MAT_LAMBERTIAN]);
+        ImGui::Text("Global Materials");
+        ImGui::Spacing();
+        MaterialUI("Mirror", scene.materials[MAT_MIRROR]);
+        MaterialUI("Dielectric", scene.materials[MAT_DIELECTRIC]);
+        MaterialUI("Lambertian", scene.materials[MAT_LAMBERTIAN]);
     }
+
+    ImGui::End();
 }
 
+// -----------------------------------------------------------
+// Light inspector panels
+// -----------------------------------------------------------
+static const char* LightTypeName(Light* light)
+{
+    if (dynamic_cast<PointLight*>(light))       return "Point Light";
+    if (dynamic_cast<DirectionalLight*>(light)) return "Directional Light";
+    if (dynamic_cast<SpotLight*>(light))        return "Spot Light";
+    if (dynamic_cast<AreaLight*>(light))         return "Area Light";
+    return "Unknown Light";
+}
 
 void Renderer::LightUI() const
 {
-
-    ImGui::Text("Lights");
-
-    int lightIndex = 0;
+    int index = 0;
     for (Light* light : lights)
     {
-        ImGui::PushID(lightIndex++);
-        ImGui::Checkbox("Enabled", &light->enabled);
+        ImGui::PushID(index++);
 
-        if (PointLight* pl = dynamic_cast<PointLight*>(light))
+        // Collapsible header with enable checkbox
+        bool open = ImGui::CollapsingHeader("##lightHeader",
+            light->enabled ? ImGuiTreeNodeFlags_DefaultOpen : 0);
+
+        // Draw the checkbox on the same line as the header
+        ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - 24);
+        ImGui::Checkbox("##enabled", &light->enabled);
+
+        // Draw the label over the header
+        ImGui::SameLine(30);
+        ImGui::TextUnformatted(LightTypeName(light));
+
+        if (open)
         {
-            if (ImGui::CollapsingHeader("Point Light###Header", ImGuiTreeNodeFlags_DefaultOpen))
+            ImGui::Indent();
+            ImGui::BeginDisabled(!light->enabled);
+
+            if (auto* pl = dynamic_cast<PointLight*>(light))
             {
                 ImGui::DragFloat3("Position", &pl->position.x, 0.1f);
                 ImGui::ColorEdit3("Color", &pl->color.x);
             }
-        }
-        else if (DirectionalLight* dl = dynamic_cast<DirectionalLight*>(light))
-        {
-            if (ImGui::CollapsingHeader("Directional Light##Header", ImGuiTreeNodeFlags_DefaultOpen))
+            else if (auto* dl = dynamic_cast<DirectionalLight*>(light))
             {
-                ImGui::DragFloat3("Direction", &dl->direction.x, 0.01f);
-                dl->direction = normalize(dl->direction);
+                if (ImGui::DragFloat3("Direction", &dl->direction.x, 0.01f))
+                    dl->direction = normalize(dl->direction);
                 ImGui::ColorEdit3("Color", &dl->color.x);
             }
-        }
-        else if (SpotLight* sl = dynamic_cast<SpotLight*>(light))
-        {
-            if (ImGui::CollapsingHeader("Spot Light##Header", ImGuiTreeNodeFlags_DefaultOpen))
+            else if (auto* sl = dynamic_cast<SpotLight*>(light))
             {
                 ImGui::DragFloat3("Position", &sl->position.x, 0.1f);
-                ImGui::DragFloat3("Direction", &sl->direction.x, 0.01f);
-                sl->direction = normalize(sl->direction);
+                if (ImGui::DragFloat3("Direction", &sl->direction.x, 0.01f))
+                    sl->direction = normalize(sl->direction);
                 ImGui::ColorEdit3("Color", &sl->color.x);
                 ImGui::DragFloat("Range", &sl->range, 0.1f, 0.1f, 100.0f);
                 ImGui::DragFloat("Angle", &sl->spotAngleDeg, 0.1f, 0.1f, 90.0f);
-                ImGui::DragFloat("Edge Roughness", &sl->edgeRoughness, 0.01f, 0.0f, 1.0f);
-                sl->edgeRoughness = clamp(sl->edgeRoughness, 0.0f, 0.99f);
+                ImGui::SliderFloat("Edge Softness", &sl->edgeRoughness, 0.0f, 1.0f);
             }
-        }
-        else if (AreaLight* al = dynamic_cast<AreaLight*>(light))
-        {
-            if (ImGui::CollapsingHeader("Area Light##Header", ImGuiTreeNodeFlags_DefaultOpen))
+            else if (auto* al = dynamic_cast<AreaLight*>(light))
             {
-                ImGui::ColorEdit3("Color", &al->color.x);   // stays 0–1
-                ImGui::DragFloat("Intensity", &al->intensity, 0.1f, 0.0f, 1000.0f);
+                ImGui::ColorEdit3("Color", &al->color.x);
+                ImGui::DragFloat("Intensity", &al->intensity, 0.1f, 0.0f, 1000.0f,
+                    "%.1f", ImGuiSliderFlags_Logarithmic);
                 ImGui::Spacing();
                 ImGui::DragFloat3("Corner", &al->corner.x, 0.1f);
                 ImGui::DragFloat3("Edge 1", &al->edge1.x, 0.1f);
                 ImGui::DragFloat3("Edge 2", &al->edge2.x, 0.1f);
             }
+
+            ImGui::EndDisabled();
+            ImGui::Unindent();
         }
+
         ImGui::PopID();
     }
-
-    ImGui::Separator();
 }
 
+// -----------------------------------------------------------
+// Material inspector panel
+// -----------------------------------------------------------
 void Tmpl8::Renderer::MaterialUI(const char* label, Material& material)
 {
+    ImGui::PushID(label);
 
-    ImGui::Separator();
-    ImGui::Text("%s", label);
-
-    ImGui::PushID(label); 
-
-    static const char* MaterialTypeLabels[] = { "Lambertian", "Metal", "Dielectric", "Emissive" };
-
-    int type = static_cast<int>(material.type);
-    if (ImGui::Combo("Type", &type, MaterialTypeLabels, IM_ARRAYSIZE(MaterialTypeLabels)))
-        material.type = static_cast<MaterialType>(type);
-
-    ImGui::ColorEdit3("Albedo", &material.albedo.x);
-
-    switch (material.type)
+    if (ImGui::TreeNode(label))
     {
-    case MaterialType::Lambertian:
-        ImGui::SliderFloat("Roughness", &material.roughness, 0.0f, 1.0f);
-        break;
+        static const char* TypeLabels[] = {
+            "Lambertian", "Metal", "Dielectric", "Emissive"
+        };
+        int type = (int)material.type;
+        if (ImGui::Combo("Shader", &type, TypeLabels, IM_ARRAYSIZE(TypeLabels)))
+            material.type = (MaterialType)type;
 
-    case MaterialType::Metal:
-        ImGui::SliderFloat("Roughness", &material.roughness, 0.0f, 1.0f);
-        ImGui::SliderFloat("Metallic", &material.metallic, 0.0f, 1.0f);
-        break;
+        ImGui::ColorEdit3("Albedo", &material.albedo.x);
 
-    case MaterialType::Dielectric:
-        ImGui::SliderFloat("IOR", &material.ior, 1.0f, 2.5f);
-        break;
+        switch (material.type)
+        {
+        case MaterialType::Lambertian:
+            ImGui::SliderFloat("Roughness", &material.roughness, 0.0f, 1.0f);
+            break;
+        case MaterialType::Metal:
+            ImGui::SliderFloat("Roughness", &material.roughness, 0.0f, 1.0f);
+            ImGui::SliderFloat("Metallic", &material.metallic, 0.0f, 1.0f);
+            break;
+        case MaterialType::Dielectric:
+            ImGui::SliderFloat("IOR", &material.ior, 1.0f, 2.5f);
+            break;
+        case MaterialType::Emissive:
+            ImGui::ColorEdit3("Emission Color", &material.emission.x);
+            ImGui::SliderFloat("Intensity", &material.emissionStr, 0.0f, 50.0f);
+            break;
+        }
 
-    case MaterialType::Emissive:
-        ImGui::ColorEdit3("Emission", &material.emission.x);
-        ImGui::SliderFloat("Emission Strength", &material.emissionStr, 0.0f, 50.0f);
-        break;
+        ImGui::TreePop();
     }
 
     ImGui::PopID();

@@ -24,11 +24,13 @@ public:
 		return p;
 	}
 
-	inline float3 reflect(const float3& v, const float3& n) {
+	inline float3 reflect(const float3& v, const float3& n)
+	{
 		return v - 2.0f * dot(v, n) * n;
 	}
 
-	inline bool Refract(const float3& v, const float3& n, float ni_over_nt, float3& refracted) {
+	inline bool Refract(const float3& v, const float3& n, float ni_over_nt, float3& refracted)
+	{
 		float3 uv = normalize(v);
 		float dt = dot(uv, n);
 		float discriminant = 1.0f - ni_over_nt * ni_over_nt * (1 - dt * dt);
@@ -43,6 +45,13 @@ public:
 		float r0 = (1 - ref_idx) / (1 + ref_idx);
 		r0 = r0 * r0;
 		return r0 + (1 - r0) * powf(1 - cosine, 5);
+	}
+
+	float BlueNoise(int x, int y, int frame)
+	{
+		int ix = (x + frame * 17) & (BN_SIZE - 1);
+		int iy = (y + frame * 31) & (BN_SIZE - 1);
+		return blueNoise[ix + iy * BN_SIZE] * (1.0f / 255.0f);
 	}
 
 	float lastFrameTime = 0.0f;     // time of last frame in seconds
@@ -101,7 +110,11 @@ public:
 	int selectedMaterialIndex = -1; // currently selected material
 	bool selectionLocked = false;    // true if we’ve selected something
 
-	bool editingMaterial = false; 
+	bool editingMaterial = false;
+
+	//Blue noise
+	static constexpr int BN_SIZE = 256;
+	uint8_t* blueNoise = nullptr;
 
 };
 
