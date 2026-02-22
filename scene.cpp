@@ -64,58 +64,18 @@ Scene::Scene()
     materials[MAT_BLUE].type = MaterialType::Lambertian;
     materials[MAT_BLUE].albedo = { 0.26f, 0.26f, 1.0f };
 
-    // Floor
-    for (int z = 0; z < WORLDSIZE; z++)
-        for (int x = 0; x < WORLDSIZE; x++)
-            for (int y = 0; y < 8; y++)
-            {
-                int idx = x + y * WORLDSIZE + z * WORLDSIZE2;
-                bool isWhite = ((x / 8) + (z / 8)) % 2 == 0;
-                grid[idx] = isWhite ? MAT_LAMBERTIAN_WHITE : MAT_LAMBERTIAN_GRAY;
-            }
+    const bool GENERATE = false; 
 
-    auto createSphere = [&](int cx, int cy, int cz, int r, MaterialID mat) {
-        for (int z = -r; z <= r; z++)
-            for (int y = -r; y <= r; y++)
-                for (int x = -r; x <= r; x++)
-                    if (x * x + y * y + z * z <= r * r)
-                    {
-                        int px = cx + x;
-                        int py = cy + y;
-                        int pz = cz + z;
-                        if (px < 0 || py < 0 || pz < 0 ||
-                            px >= WORLDSIZE || py >= WORLDSIZE || pz >= WORLDSIZE) continue;
-                        int idx = px + py * WORLDSIZE + pz * WORLDSIZE2;
-                        grid[idx] = mat;
-                    }
-        };
+    if (GENERATE)
+    {
 
-    createSphere(40, 20, 40, 12, MAT_DIELECTRIC);
-    createSphere(80, 15, 60, 10, MAT_DIELECTRIC);
-    createSphere(90, 12, 90, 8, MAT_DIELECTRIC);
-    createSphere(60, 18, 80, 10, MAT_MIRROR);
+    }
+    else
+    {
+        LoadGrid(grid, "assets/TestScene.bin");
+    }
 
-    // Simple cubes
-    auto createCube = [&](int x1, int y1, int z1, int size, MaterialID mat) {
-        for (int z = z1; z < z1 + size; z++)
-            for (int y = y1; y < y1 + size; y++)
-                for (int x = x1; x < x1 + size; x++)
-                    if (x >= 0 && y >= 0 && z >= 0 && x < WORLDSIZE && y < WORLDSIZE && z < WORLDSIZE)
-                        grid[x + y * WORLDSIZE + z * WORLDSIZE2] = mat;
-        };
 
-    createCube(20, 8, 20, 10, MAT_RED);    // Red cube
-    createCube(100, 8, 30, 8, MAT_GREEN);  // Green cube
-    createCube(25, 8, 100, 12, MAT_BLUE);  // Blue cube
-
-    // Mirror back wall
-    for (int y = 8; y < 60; y++)
-        for (int x = 0; x < WORLDSIZE; x++)
-        {
-            int z = WORLDSIZE - 1;
-            int idx = x + y * WORLDSIZE + z * WORLDSIZE2;
-            grid[idx] = MAT_MIRROR;
-        }
 }
 
 void Scene::Set(const uint x, const uint y, const uint z, const uint v)

@@ -21,6 +21,16 @@ float3 Ray::GetNormal() const
 
 float3 Ray::GetAlbedo(const Scene& scene) const
 {
-	// return the (floating point) albedo at the nearest intersection
-	return scene.materials[voxel].albedo;
+    if (voxel < MAT_COUNT)
+    {
+        return scene.materials[voxel].albedo;
+    }
+    else
+    {
+        // decode original RGB888 colour from the .bin file
+        float r = ((voxel >> 16) & 0xFF) / 255.0f;
+        float g = ((voxel >> 8) & 0xFF) / 255.0f;
+        float b = (voxel & 0xFF) / 255.0f;
+        return float3(r, g, b);
+    }
 }
