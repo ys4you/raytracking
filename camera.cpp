@@ -24,6 +24,11 @@ Camera::Camera()
 	focusRange = float2(0.0f, .0f); // Focus on objects 4-6 units away
 	blurFactor = .0f;
 
+	//Panini params
+	hfov = 120.0f;   // horizontal FOV in degrees
+	panini_d = 0.0f; // 0 = pinhole, 1 = standard Panini
+	panini_s = 0.0f; // vertical squeeze (optional, start at 0)
+
 
 	lastCamPos = camPos;
 	lastCamTarget = camTarget;
@@ -38,23 +43,83 @@ Camera::~Camera()
 	fclose( f );
 }
 
-Ray Camera::GetPrimaryRay( const float x, const float y )
+float3 Camera::FisheyeBaseDir(float px, float py) const
 {
-	// 1. Pixel on image plane
-	float u = x / SCRWIDTH;
-	float v = y / SCRHEIGHT;
+	// Normalize to [-1, 1]
+	float nx = (2.0f * px / SCRWIDTH - 1.0f);
+	float ny = 1.0f - (2.0f * py / SCRHEIGHT);
+	float aspectInv = (float)SCRHEIGHT / (float)SCRWIDTH;
 
-	float3 P = topLeft +
-		u * (topRight - topLeft) +
-		v * (bottomLeft - topLeft);
+	// Map to angular space
+	float hfovRad = hfov * PI / 180.0f;
+	float phi = nx * hfovRad * 0.5f;              // azimuth
+	float theta = ny * hfovRad * 0.5f * aspectInv;  // elevation
 
-	// 2. Pinhole ray direction
-	float3 pinholeDir = normalize(P - camPos);
+	float3 dir;
+	dir.x = cos(theta) * sin(phi);
+	dir.y = sin(theta);
+	dir.z = cos(theta) * cos(phi);
 
-	// 3. Approximate distance along the ray (depth)
-	float t = dot(pinholeDir, camAhead);
+	return normalize(dir);
+}
 
-	// 4. Compute blur based on focus range
+float3 Camera::PaniniBaseDir(float px, float py) const
+{
+	//normalized
+	float nx = (2.0f * px / SCRWIDTH - 1.0f);
+	float ny = 1.0f - (2.0f * py / SCRHEIGHT);
+
+	float aspectInv = (float)SCRHEIGHT / (float)SCRWIDTH;
+
+	// FOV
+	float hfovRad = hfov * PI / 180.0f;
+	float halfFov = hfovRad * 0.5f;
+
+	//Panini horizontal scaling
+	float d = panini_d;
+	float uMax = (d + 1.0f) * sin(halfFov) / (d + cos(halfFov));
+	float u = nx * uMax;
+	float v = ny * uMax * aspectInv;
+
+	// recover horizontal angle
+	float dp1 = d + 1.0f;
+	float phi =
+		atan2(u, dp1) +
+		asin(u * d / sqrt(dp1 * dp1 + u * u));
+
+	float cosPhi = cos(phi);
+	float Sh = dp1 / (d + cosPhi);
+	float Sv = (1.0f - panini_s) * Sh + panini_s / cosPhi;
+
+	float theta = atan(v / Sv);
+
+	// --- build direction in camera space --- AI helped
+	float3 dir;
+	dir.x = cos(theta) * sin(phi);
+	dir.y = sin(theta);
+	dir.z = cos(theta) * cos(phi);
+
+	return normalize(dir);
+}
+
+Ray Camera::GetPrimaryRay( const float x, const float y ) const
+{
+	//.1 Panini 
+	float3 dirCam = (useFisheye)
+		? FisheyeBaseDir(x + 0.5f, y + 0.5f)
+		: PaniniBaseDir(x + 0.5f, y + 0.5f);
+	float3 dir =
+		dirCam.x * camRight +
+		dirCam.y * camUp +
+		dirCam.z * camAhead;
+
+	dir = normalize(dir);
+
+	// 2. Approximate distance along the ray (depth)
+	// depth along view direction
+	float t = dot(dir, camAhead);
+
+	// 3. Compute blur based on focus range
 	float localBlur = 0.0f;
 	if (t < focusRange.x)
 		localBlur = (focusRange.x - t) / focusRange.x;
@@ -66,28 +131,22 @@ Ray Camera::GetPrimaryRay( const float x, const float y )
 	// Apply user-defined multiplier
 	float finalBlur = localBlur * blurFactor;
 
-	// 5. Sample point on lens
+	// 4. Sample point on lens
 	float r = sqrt(RandomFloat());
 	float theta = 2.0f * PI * RandomFloat();
 	float dx = r * cos(theta);
 	float dy = r * sin(theta);
 
 	float3 lensOffset = camRight * dx * aperture * finalBlur +
-		camUp * dy * aperture * finalBlur;
+						camUp * dy * aperture * finalBlur;
 
-	// 6. Compute focus point
-	float3 focusPoint = camPos + pinholeDir * t;
+	float3 focusPoint = camPos + dir * t;
+
 
 	float3 origin = camPos + lensOffset;
 	float3 direction = normalize(focusPoint - origin);
 
 	return Ray(origin, direction);
-
-
-	// Note: no need to normalize primary rays in a pure voxel world
-	// TODO: 
-	// - if we have other primitives as well, we *do* need to normalize!
-	// - there are far cooler camera models, e.g. try 'Panini projection'.
 }
 
 Ray Camera::GetPinholeRay(float x, float y)

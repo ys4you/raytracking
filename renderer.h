@@ -67,7 +67,8 @@ public:
 	void Tick( float deltaTime );
 	void UI();
 	void LightUI() const;
-	void MaterialUI(const char* label, Material& material);
+	bool MaterialUI(const char* label, Material& material);
+
 	void Shutdown() { /* nothing here for now */ }
 	// input handling
 	void MouseUp(int button) { button = 0; /* implement if you want to handle keys */ }
@@ -115,6 +116,8 @@ public:
 	//Blue noise
 	static constexpr int BN_SIZE = 256;
 	uint8_t* blueNoise = nullptr;
+
+	const char* LightTypeName(Light* light) const;
 
 };
 

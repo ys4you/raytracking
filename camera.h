@@ -13,7 +13,9 @@ class Camera
 public:
 	Camera();
 	~Camera();
-	Ray GetPrimaryRay( const float x, const float y );
+	float3 FisheyeBaseDir(float px, float py) const;
+	float3 PaniniBaseDir(float px, float py) const;
+	Ray GetPrimaryRay( const float x, const float y ) const;
 	Ray GetPinholeRay(float x, float y);
 	bool HandleInput( const float t );
 	bool CameraHasMoved();
@@ -32,6 +34,14 @@ public:
 	float2 focusRange = float2(0.0f, 0.1f); // near and far distances in focus
 
 	float blurFactor = 0.f;          // overall multiplier for blur, 0 = no blur, 1 = full blur
+
+	//Panini params
+	float hfov = 120.0f;   // horizontal FOV in degrees
+	float panini_d = 1.0f; // 0 = pinhole, 1 = standard Panini
+	float panini_s = 0.0f; // vertical squeeze (optional, start at 0)
+
+	//fish eye
+	bool useFisheye = false;
 
 
 };

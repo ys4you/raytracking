@@ -241,8 +241,9 @@ void Renderer::Tick(float deltaTime)
     fps = 1.0f / lastFrameTime;
     rps = (float)totalRaysThisFrame / (lastFrameTime * 1000000.0f); // Mrays/s
 }
+
 // ----------------------------------------------------------- 
-// Update user interface (imgui)
+// Update user interface (imgui) with accumulator reset
 // -----------------------------------------------------------
 void Renderer::UI()
 {
@@ -264,8 +265,39 @@ void Renderer::UI()
     if (ImGui::CollapsingHeader("Debug", ImGuiTreeNodeFlags_DefaultOpen))
     {
         ImGui::Indent();
-        ImGui::Checkbox("Show Normals", &debugNormals);
+        if (ImGui::Checkbox("Show Normals", &debugNormals))
+            ResetAccumulator();
         ImGui::Unindent();
+
+        // ===== CAMERA DEBUG =====
+        if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            ImGui::Indent();
+            bool cameraChanged = false;
+
+            ImGui::Text("Depth of Field");
+            cameraChanged |= ImGui::SliderFloat("Aperture", &camera.aperture, 0.0f, 0.5f, "%.4f");
+            cameraChanged |= ImGui::SliderFloat("Blur Factor", &camera.blurFactor, 0.0f, 1.0f);
+            cameraChanged |= ImGui::DragFloat2("Focus Range", &camera.focusRange.x, 0.01f, 0.0f, 100.0f, "%.2f");
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            cameraChanged |= ImGui::Checkbox("Use Fisheye", &camera.useFisheye);
+            ImGui::Text("Projection");
+            cameraChanged |= ImGui::SliderFloat("HFOV (deg)", &camera.hfov, 30.0f, 160.0f, "%.1f");
+
+            if (!camera.useFisheye)
+            {
+                cameraChanged |= ImGui::SliderFloat("Panini d", &camera.panini_d, 0.0f, 1.5f, "%.3f");
+                cameraChanged |= ImGui::SliderFloat("Panini s", &camera.panini_s, 0.0f, 1.0f, "%.3f");
+            }
+
+            if (cameraChanged) ResetAccumulator();
+
+            ImGui::Unindent();
+        }
     }
 
     ImGui::Spacing();
@@ -273,7 +305,67 @@ void Renderer::UI()
     // ===== LIGHTS =====
     if (ImGui::CollapsingHeader("Lights", ImGuiTreeNodeFlags_DefaultOpen))
     {
-        LightUI();
+        bool lightsChanged = false;
+        int index = 0;
+        for (Light* light : lights)
+        {
+            ImGui::PushID(index++);
+            bool open = ImGui::CollapsingHeader("##lightHeader", light->enabled ? ImGuiTreeNodeFlags_DefaultOpen : 0);
+
+            // Enable checkbox
+            ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - 24);
+            if (ImGui::Checkbox("##enabled", &light->enabled))
+                lightsChanged = true;
+
+            ImGui::SameLine(30);
+            ImGui::TextUnformatted(LightTypeName(light));
+
+            if (open)
+            {
+                ImGui::Indent();
+                ImGui::BeginDisabled(!light->enabled);
+                bool lightChangedThis = false;
+
+                if (auto* pl = dynamic_cast<PointLight*>(light))
+                {
+                    lightChangedThis |= ImGui::DragFloat3("Position", &pl->position.x, 0.1f);
+                    lightChangedThis |= ImGui::ColorEdit3("Color", &pl->color.x);
+                }
+                else if (auto* dl = dynamic_cast<DirectionalLight*>(light))
+                {
+                    lightChangedThis |= ImGui::DragFloat3("Direction", &dl->direction.x, 0.01f);
+                    if (lightChangedThis) dl->direction = normalize(dl->direction);
+                    lightChangedThis |= ImGui::ColorEdit3("Color", &dl->color.x);
+                }
+                else if (auto* sl = dynamic_cast<SpotLight*>(light))
+                {
+                    lightChangedThis |= ImGui::DragFloat3("Position", &sl->position.x, 0.1f);
+                    lightChangedThis |= ImGui::DragFloat3("Direction", &sl->direction.x, 0.01f);
+                    if (lightChangedThis) sl->direction = normalize(sl->direction);
+                    lightChangedThis |= ImGui::ColorEdit3("Color", &sl->color.x);
+                    lightChangedThis |= ImGui::DragFloat("Range", &sl->range, 0.1f, 0.1f, 100.0f);
+                    lightChangedThis |= ImGui::DragFloat("Angle", &sl->spotAngleDeg, 0.1f, 0.1f, 90.0f);
+                    lightChangedThis |= ImGui::SliderFloat("Edge Softness", &sl->edgeRoughness, 0.0f, 1.0f);
+                }
+                else if (auto* al = dynamic_cast<AreaLight*>(light))
+                {
+                    lightChangedThis |= ImGui::ColorEdit3("Color", &al->color.x);
+                    lightChangedThis |= ImGui::DragFloat("Intensity", &al->intensity, 0.1f, 0.0f, 1000.0f, "%.1f", ImGuiSliderFlags_Logarithmic);
+                    lightChangedThis |= ImGui::DragFloat3("Corner", &al->corner.x, 0.1f);
+                    lightChangedThis |= ImGui::DragFloat3("Edge 1", &al->edge1.x, 0.1f);
+                    lightChangedThis |= ImGui::DragFloat3("Edge 2", &al->edge2.x, 0.1f);
+                }
+
+                if (lightChangedThis) lightsChanged = true;
+
+                ImGui::EndDisabled();
+                ImGui::Unindent();
+            }
+
+            ImGui::PopID();
+        }
+
+        if (lightsChanged) ResetAccumulator();
     }
 
     ImGui::Spacing();
@@ -281,9 +373,13 @@ void Renderer::UI()
     // ===== MATERIALS =====
     if (ImGui::CollapsingHeader("Materials", ImGuiTreeNodeFlags_DefaultOpen))
     {
+        bool materialsChanged = false;
+
         if (selectionLocked && selectedMaterialIndex != -1)
         {
-            MaterialUI("Selected Material", scene.materials[selectedMaterialIndex]);
+            if (MaterialUI("Selected Material", scene.materials[selectedMaterialIndex]))
+                materialsChanged = true;
+
             ImGui::Spacing();
             ImGui::Separator();
             ImGui::Spacing();
@@ -291,123 +387,52 @@ void Renderer::UI()
 
         ImGui::Text("Global Materials");
         ImGui::Spacing();
-        MaterialUI("Mirror", scene.materials[MAT_MIRROR]);
-        MaterialUI("Dielectric", scene.materials[MAT_DIELECTRIC]);
-        MaterialUI("Lambertian", scene.materials[MAT_LAMBERTIAN]);
+        if (MaterialUI("Mirror", scene.materials[MAT_MIRROR])) materialsChanged = true;
+        if (MaterialUI("Dielectric", scene.materials[MAT_DIELECTRIC])) materialsChanged = true;
+        if (MaterialUI("Lambertian", scene.materials[MAT_LAMBERTIAN])) materialsChanged = true;
+
+        if (materialsChanged) ResetAccumulator();
     }
 
     ImGui::End();
 }
 
 // -----------------------------------------------------------
-// Light inspector panels
+// MaterialUI with change detection
+// Returns true if any property changed
 // -----------------------------------------------------------
-static const char* LightTypeName(Light* light)
-{
-    if (dynamic_cast<PointLight*>(light))       return "Point Light";
-    if (dynamic_cast<DirectionalLight*>(light)) return "Directional Light";
-    if (dynamic_cast<SpotLight*>(light))        return "Spot Light";
-    if (dynamic_cast<AreaLight*>(light))         return "Area Light";
-    return "Unknown Light";
-}
-
-void Renderer::LightUI() const
-{
-    int index = 0;
-    for (Light* light : lights)
-    {
-        ImGui::PushID(index++);
-
-        // Collapsible header with enable checkbox
-        bool open = ImGui::CollapsingHeader("##lightHeader",
-            light->enabled ? ImGuiTreeNodeFlags_DefaultOpen : 0);
-
-        // Draw the checkbox on the same line as the header
-        ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - 24);
-        ImGui::Checkbox("##enabled", &light->enabled);
-
-        // Draw the label over the header
-        ImGui::SameLine(30);
-        ImGui::TextUnformatted(LightTypeName(light));
-
-        if (open)
-        {
-            ImGui::Indent();
-            ImGui::BeginDisabled(!light->enabled);
-
-            if (auto* pl = dynamic_cast<PointLight*>(light))
-            {
-                ImGui::DragFloat3("Position", &pl->position.x, 0.1f);
-                ImGui::ColorEdit3("Color", &pl->color.x);
-            }
-            else if (auto* dl = dynamic_cast<DirectionalLight*>(light))
-            {
-                if (ImGui::DragFloat3("Direction", &dl->direction.x, 0.01f))
-                    dl->direction = normalize(dl->direction);
-                ImGui::ColorEdit3("Color", &dl->color.x);
-            }
-            else if (auto* sl = dynamic_cast<SpotLight*>(light))
-            {
-                ImGui::DragFloat3("Position", &sl->position.x, 0.1f);
-                if (ImGui::DragFloat3("Direction", &sl->direction.x, 0.01f))
-                    sl->direction = normalize(sl->direction);
-                ImGui::ColorEdit3("Color", &sl->color.x);
-                ImGui::DragFloat("Range", &sl->range, 0.1f, 0.1f, 100.0f);
-                ImGui::DragFloat("Angle", &sl->spotAngleDeg, 0.1f, 0.1f, 90.0f);
-                ImGui::SliderFloat("Edge Softness", &sl->edgeRoughness, 0.0f, 1.0f);
-            }
-            else if (auto* al = dynamic_cast<AreaLight*>(light))
-            {
-                ImGui::ColorEdit3("Color", &al->color.x);
-                ImGui::DragFloat("Intensity", &al->intensity, 0.1f, 0.0f, 1000.0f,
-                    "%.1f", ImGuiSliderFlags_Logarithmic);
-                ImGui::Spacing();
-                ImGui::DragFloat3("Corner", &al->corner.x, 0.1f);
-                ImGui::DragFloat3("Edge 1", &al->edge1.x, 0.1f);
-                ImGui::DragFloat3("Edge 2", &al->edge2.x, 0.1f);
-            }
-
-            ImGui::EndDisabled();
-            ImGui::Unindent();
-        }
-
-        ImGui::PopID();
-    }
-}
-
-// -----------------------------------------------------------
-// Material inspector panel
-// -----------------------------------------------------------
-void Tmpl8::Renderer::MaterialUI(const char* label, Material& material)
+bool Renderer::MaterialUI(const char* label, Material& material)
 {
     ImGui::PushID(label);
+    bool changed = false;
 
     if (ImGui::TreeNode(label))
     {
-        static const char* TypeLabels[] = {
-            "Lambertian", "Metal", "Dielectric", "Emissive"
-        };
+        static const char* TypeLabels[] = { "Lambertian", "Metal", "Dielectric", "Emissive" };
         int type = (int)material.type;
         if (ImGui::Combo("Shader", &type, TypeLabels, IM_ARRAYSIZE(TypeLabels)))
+        {
             material.type = (MaterialType)type;
+            changed = true;
+        }
 
-        ImGui::ColorEdit3("Albedo", &material.albedo.x);
+        changed |= ImGui::ColorEdit3("Albedo", &material.albedo.x);
 
         switch (material.type)
         {
         case MaterialType::Lambertian:
-            ImGui::SliderFloat("Roughness", &material.roughness, 0.0f, 1.0f);
+            changed |= ImGui::SliderFloat("Roughness", &material.roughness, 0.0f, 1.0f);
             break;
         case MaterialType::Metal:
-            ImGui::SliderFloat("Roughness", &material.roughness, 0.0f, 1.0f);
-            ImGui::SliderFloat("Metallic", &material.metallic, 0.0f, 1.0f);
+            changed |= ImGui::SliderFloat("Roughness", &material.roughness, 0.0f, 1.0f);
+            changed |= ImGui::SliderFloat("Metallic", &material.metallic, 0.0f, 1.0f);
             break;
         case MaterialType::Dielectric:
-            ImGui::SliderFloat("IOR", &material.ior, 1.0f, 2.5f);
+            changed |= ImGui::SliderFloat("IOR", &material.ior, 1.0f, 2.5f);
             break;
         case MaterialType::Emissive:
-            ImGui::ColorEdit3("Emission Color", &material.emission.x);
-            ImGui::SliderFloat("Intensity", &material.emissionStr, 0.0f, 50.0f);
+            changed |= ImGui::ColorEdit3("Emission Color", &material.emission.x);
+            changed |= ImGui::SliderFloat("Intensity", &material.emissionStr, 0.0f, 50.0f);
             break;
         }
 
@@ -415,6 +440,7 @@ void Tmpl8::Renderer::MaterialUI(const char* label, Material& material)
     }
 
     ImGui::PopID();
+    return changed;
 }
 
 void Tmpl8::Renderer::InitAccumulator()
@@ -431,6 +457,16 @@ void Tmpl8::Renderer::ResetAccumulator()
 {
     memset(accumulator, 0, SCRWIDTH * SCRHEIGHT * sizeof(float3));
     sampleCount = 0;
+}
+
+
+const char* Renderer::LightTypeName(Light* light) const
+{
+    if (dynamic_cast<PointLight*>(light))       return "Point Light";
+    if (dynamic_cast<DirectionalLight*>(light)) return "Directional Light";
+    if (dynamic_cast<SpotLight*>(light))        return "Spot Light";
+    if (dynamic_cast<AreaLight*>(light))        return "Area Light";
+    return "Unknown Light";
 }
 
 
