@@ -15,16 +15,23 @@
 
 enum MaterialID : uint8_t
 {
-    MAT_NONE = 0,             // empty voxel
-    MAT_LAMBERTIAN = 1,       // Default Lambertian
-    MAT_MIRROR = 2,           // Mirror material
-    MAT_DIELECTRIC = 3,       // Glass material
-    MAT_LAMBERTIAN_WHITE = 4,
-    MAT_LAMBERTIAN_GRAY = 5,
-    MAT_RED = 6,
-    MAT_GREEN = 7,
-    MAT_BLUE = 8,
-    MAT_COUNT
+	MAT_NONE = 0,
+	MAT_LAMBERTIAN = 1,
+	MAT_MIRROR = 2,
+	MAT_DIELECTRIC = 3,
+	MAT_LAMBERTIAN_WHITE = 4,
+	MAT_LAMBERTIAN_GRAY = 5,
+	MAT_RED = 6,
+	MAT_GREEN = 7,
+	MAT_BLUE = 8,
+
+	MAT_ORANGE = 9,
+	MAT_YELLOW = 10,
+	MAT_PURPLE = 11,
+	MAT_CYAN = 12,
+	MAT_BROWN = 13,
+	MAT_TEAL = 14,
+	MAT_COUNT            // now 15
 };
 
 

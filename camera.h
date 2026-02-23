@@ -6,11 +6,27 @@
 // #define FULLSCREEN
 #define DOUBLESIZE
 
-namespace Tmpl8 {
+
+typedef float4 Plane;
+struct Frustum
+{
+	Plane plane[4];
+};
+
+inline float planeDist(Plane& plane, float3& pos)
+{
+	return dot(float3(plane), pos) - plane.w;
+}
+
+namespace Tmpl8 
+{
 
 class Camera
 {
 public:
+
+
+
 	Camera();
 	~Camera();
 	float3 FisheyeBaseDir(float px, float py) const;
@@ -19,6 +35,9 @@ public:
 	Ray GetPinholeRay(float x, float y);
 	bool HandleInput( const float t );
 	bool CameraHasMoved();
+
+	bool WorldToScreen(const float3& P, float& outX, float& outY) const;
+
 	float aspect = (float)SCRWIDTH / (float)SCRHEIGHT;
 	float3 camPos, camTarget;
 	float3 camRight;
@@ -43,6 +62,7 @@ public:
 	//fish eye
 	bool useFisheye = false;
 
+	Frustum BuildFrustum();
 
 };
 

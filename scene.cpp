@@ -47,6 +47,8 @@ Scene::Scene()
     materials[MAT_DIELECTRIC].albedo = { 1.0f, 1.0f, 1.0f };
     materials[MAT_DIELECTRIC].ior = 1.5f;
 
+
+    ///TestScene
     // Checkerboard floor
     materials[MAT_LAMBERTIAN_WHITE].type = MaterialType::Lambertian;
     materials[MAT_LAMBERTIAN_WHITE].albedo = { 0.9f, 0.9f, 0.9f };
@@ -64,6 +66,26 @@ Scene::Scene()
     materials[MAT_BLUE].type = MaterialType::Lambertian;
     materials[MAT_BLUE].albedo = { 0.26f, 0.26f, 1.0f };
 
+
+    materials[MAT_ORANGE].type = MaterialType::Lambertian;
+    materials[MAT_ORANGE].albedo = { 1.0f, 0.55f, 0.10f };
+
+    materials[MAT_YELLOW].type = MaterialType::Lambertian;
+    materials[MAT_YELLOW].albedo = { 1.0f, 0.90f, 0.10f };
+
+    materials[MAT_PURPLE].type = MaterialType::Lambertian;
+    materials[MAT_PURPLE].albedo = { 0.55f, 0.10f, 0.90f };
+
+    materials[MAT_CYAN].type = MaterialType::Lambertian;
+    materials[MAT_CYAN].albedo = { 0.10f, 0.85f, 0.85f };
+
+    materials[MAT_BROWN].type = MaterialType::Lambertian;
+    materials[MAT_BROWN].albedo = { 0.45f, 0.28f, 0.12f };
+
+    materials[MAT_TEAL].type = MaterialType::Lambertian;
+    materials[MAT_TEAL].albedo = { 0.10f, 0.55f, 0.50f };
+    ///TestScene EOD
+
     const bool GENERATE = false; 
 
     if (GENERATE)
@@ -72,7 +94,8 @@ Scene::Scene()
     }
     else
     {
-        LoadGrid(grid, "assets/TestScene.bin");
+        LoadGrid(grid, "assets/ReproScene.bin");
+        //LoadGrid(grid, "assets/TestScene.bin");
     }
 
 

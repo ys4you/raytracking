@@ -117,6 +117,8 @@ return albedo * max( 0.3f, dot( N, L ) );
 // -----------------------------------------------------------
 void Renderer::Init()
 {
+    sampleCountPerPixel = new int[SCRWIDTH * SCRHEIGHT]();
+
     //blue noise
 	//I am puting it in an uint8_t rather then keeping it in surface since surface has a uint21_t.
     //That would be more bytes for each first frame to load. less efficient
@@ -140,11 +142,11 @@ void Renderer::Init()
 	pointLight = new PointLight({ 1,1,1 }, { 1,1,1 });
 	pointLight->enabled = false;
 
-	dirLight = new DirectionalLight({ 0.3f, -0.35f,0.9f }, { 1,1,1 });
+	dirLight = new DirectionalLight({ 0.5f, -0.7f,0.45f }, { 1,1,1 });
     dirLight->enabled = true;
 
 	spotLight = new SpotLight({ 1.5f,1.5f,1.4f }, { -0.57f,-0.58f,-0.5f }, { 1,1,0.8f }, 10.f);
-	spotLight->enabled = false;
+	spotLight->enabled = true;
 
     float3 center = float3(0, 5, 0);
 
@@ -169,6 +171,11 @@ void Renderer::Init()
     accumulator = new float3[SCRWIDTH * SCRHEIGHT];
     memset(accumulator, 0, SCRWIDTH * SCRHEIGHT * sizeof(float3));
 
+    //history
+    history = new float3[SCRWIDTH * SCRHEIGHT];
+    memset(history, 0, SCRWIDTH * SCRHEIGHT * sizeof(float3));
+
+
 }
 
 // -----------------------------------------------------------
@@ -176,70 +183,110 @@ void Renderer::Init()
 // -----------------------------------------------------------
 void Renderer::Tick(float deltaTime)
 {
-    // --- Start timing ---
     auto startTime = std::chrono::high_resolution_clock::now();
-
-    // Reset accumulation if camera moved
-    if (camera.HandleInput(deltaTime))
-    {
-        ResetAccumulator();
-    }
-
-    // Advance sample index
     sampleCount++;
-    const float invSampleCount = 1.0f / sampleCount;
-
-    // Seed RNG ONCE per frame
-    InitSeed(sampleCount);
-
     int totalRaysThisFrame = 0;
 
+    // Detect camera movement ONCE before the loop, not per-pixel
+    bool cameraMoving = length(camera.camPos - prevCamera.camPos) > 1e-4f ||
+        length(camera.camTarget - prevCamera.camTarget) > 1e-4f;
+
 #pragma omp parallel for schedule(dynamic)
-    for (int y = 0; y < SCRHEIGHT; y++)
+    for (int y = 0; y < SCRHEIGHT; y++) for (int x = 0; x < SCRWIDTH; x++)
     {
-        for (int x = 0; x < SCRWIDTH; x++)
+        const int idx = x + y * SCRWIDTH;
+
+        // Jittered primary ray
+        float jx = BlueNoise(x, y, sampleCount);
+        float jy = BlueNoise(y, x, sampleCount);
+        Ray r = camera.GetPrimaryRay(x + jx, y + jy);
+        float3 sample = Trace(r, 0, 0, 0);
+        totalRaysThisFrame++;
+
+        float3 blended;
+
+        if (!cameraMoving)
         {
-            const int idx = x + y * SCRWIDTH;
-
-            // Number of samples per pixel
-            const int SAMPLES_PER_PIXEL = (camera.aperture > 0.0f) ? 4 : 1;
-
-            float3 sample(0.0f);
-
-            for (int s = 0; s < SAMPLES_PER_PIXEL; ++s)
-            {
-                // Blue-noise jitter for ALL samples
-                float jx = BlueNoise(x + s * 17, y + s * 31, sampleCount);
-                float jy = BlueNoise(y + s * 13, x + s * 29, sampleCount);
-
-                float px = x + jx;
-                float py = y + jy;
-
-                sample += Trace(camera.GetPrimaryRay(px, py), 0, 0, 0);
-            }
-
-            // Average per-pixel samples
-            sample *= (1.0f / SAMPLES_PER_PIXEL);
-
-            // Accumulate
-            accumulator[idx] += sample;
-
-            // Display running average
-            screen->pixels[idx] =
-                RGBF32_to_RGB8(accumulator[idx] * invSampleCount);
-
-            totalRaysThisFrame += SAMPLES_PER_PIXEL;
+            // --- STATIONARY ---
+            // Read history from the exact same pixel - no bilinear blur,
+            // no reprojection. Pure 1/N running average converges to ground truth.
+            int n = min(sampleCountPerPixel[idx] + 1, 256);
+            sampleCountPerPixel[idx] = n;
+            float alpha = 1.0f / (float)n;
+            blended = history[idx] * (1.0f - alpha) + sample * alpha;
         }
+        else if (r.voxel > 0)
+        {
+            // --- MOVING, HIT GEOMETRY ---
+            float3 P = r.O + r.t * r.D;
+            float prev_x, prev_y;
+
+            if (prevCamera.WorldToScreen(P, prev_x, prev_y))
+            {
+                // Bilinear sample from history at reprojected position
+                int ix = (int)prev_x;
+                int iy = (int)prev_y;
+                float fx = prev_x - ix;
+                float fy = prev_y - iy;
+
+                float3 a = history[ix + iy * SCRWIDTH];
+                float3 b = history[(ix + 1) + iy * SCRWIDTH];
+                float3 c = history[ix + (iy + 1) * SCRWIDTH];
+                float3 d = history[(ix + 1) + (iy + 1) * SCRWIDTH];
+
+                float3 historySample = (1 - fx) * (1 - fy) * a + fx * (1 - fy) * b
+                    + (1 - fx) * fy * c + fx * fy * d;
+
+                // Clamp historySample to neighborhood bounding box to reduce ghosting
+                float3 lo = sample, hi = sample;
+                for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++)
+                {
+                    if (dx == 0 && dy == 0) continue;
+                    int nx = x + dx, ny = y + dy;
+                    if (nx < 0 || nx >= SCRWIDTH || ny < 0 || ny >= SCRHEIGHT) continue;
+                    float3 n = accumulator[nx + ny * SCRWIDTH];
+                    lo = fminf(lo, n);
+                    hi = fmaxf(hi, n);
+                }
+                historySample = clamp(historySample, lo, hi);
+                blended = 0.8f * historySample + 0.15f * sample;
+                sampleCountPerPixel[idx] = 6;
+
+            }
+            else
+            {
+                // Hit geometry but outside previous frame - use raw sample
+                blended = sample;
+                sampleCountPerPixel[idx] = 1;
+            }
+        }
+        else
+        {
+            // --- MOVING, HIT SKY ---
+            // Sky has no world-space point to reproject, just use raw sample
+            blended = sample;
+            sampleCountPerPixel[idx] = 1;
+        }
+
+        accumulator[idx] = blended;
+        screen->pixels[idx] = RGBF32_to_RGB8(blended);
     }
 
-    // --- End timing ---
+    // Save camera state AFTER render, BEFORE HandleInput.
+    // This records which camera was used to render this frame,
+    // which next frame needs for correct reprojection.
+    prevCamera = camera;
+
+    camera.HandleInput(deltaTime);
+
+    swap(history, accumulator);
+
     auto endTime = std::chrono::high_resolution_clock::now();
     std::chrono::duration<float> frameDuration = endTime - startTime;
     lastFrameTime = frameDuration.count();
-
     avgFrameTimeMs = lastFrameTime * 1000.0f;
     fps = 1.0f / lastFrameTime;
-    rps = (float)totalRaysThisFrame / (lastFrameTime * 1000000.0f); // Mrays/s
+    rps = (float)totalRaysThisFrame / (lastFrameTime * 1000000.0f);
 }
 
 // ----------------------------------------------------------- 
@@ -456,6 +503,7 @@ void Tmpl8::Renderer::InitAccumulator()
 void Tmpl8::Renderer::ResetAccumulator()
 {
     memset(accumulator, 0, SCRWIDTH * SCRHEIGHT * sizeof(float3));
+    memset(sampleCountPerPixel, 0, SCRWIDTH * SCRHEIGHT * sizeof(int));
     sampleCount = 0;
 }
 

@@ -1,4 +1,5 @@
 #pragma once
+#include "camera.h"
 
 class Light;
 class PointLight;
@@ -90,6 +91,12 @@ public:
 	float3* history;		// for episode 5
 	Scene scene;
 	Camera camera;
+	Camera prevCamera;
+	Frustum previousFrustum;
+
+	int* sampleCountPerPixel = nullptr;  // tracks per-pixel accumulated samples
+
+	
 
 
 	// Lights

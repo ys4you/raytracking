@@ -254,3 +254,75 @@ bool Camera::CameraHasMoved()
 	}
 	return false;
 }
+
+bool Camera::WorldToScreen(const float3& P, float& outX, float& outY) const
+{
+	// Transform to camera space
+	float3 dir = P - camPos;
+	float cx = dot(dir, camRight);
+	float cy = dot(dir, camUp);
+	float cz = dot(dir, camAhead);
+	if (cz < 0.001f) return false;
+
+	// Normalize to get spherical angles
+	float len = sqrtf(cx * cx + cy * cy + cz * cz);
+	float phi = atan2f(cx / len, cz / len);  // horizontal angle
+	float theta = asinf(cy / len);              // vertical angle
+
+	float hfovRad = hfov * PI / 180.0f;
+	float halfFov = hfovRad * 0.5f;
+	float aspectInv = (float)SCRHEIGHT / (float)SCRWIDTH;
+
+	float nx, ny;
+
+	if (useFisheye)
+	{
+		// Invert FisheyeBaseDir
+		nx = phi / (halfFov);
+		ny = theta / (halfFov * aspectInv);
+	}
+	else
+	{
+		// Invert PaniniBaseDir
+		float d = panini_d;
+		float s = panini_s;
+		float dp1 = d + 1.0f;
+		float cosPhi = cosf(phi);
+
+		// Forward Panini mapping (u from phi)
+		float u = dp1 * sinf(phi) / (d + cosPhi);
+
+		// Vertical with squeeze
+		float Sh = dp1 / (d + cosPhi);
+		float Sv = (1.0f - s) * Sh + s / cosPhi;
+		float v = tanf(theta) * Sv;
+
+		// Normalize by uMax (same as PaniniBaseDir)
+		float uMax = dp1 * sinf(halfFov) / (d + cosf(halfFov));
+		nx = u / uMax;
+		ny = v / (uMax * aspectInv);
+	}
+
+	// NDC to pixel  (ny flipped: +1 = top of screen = y=0)
+	outX = (nx + 1.0f) * 0.5f * SCRWIDTH;
+	outY = (1.0f - ny) * 0.5f * SCRHEIGHT;
+
+	return (outX >= 0 && outX < SCRWIDTH - 1 &&
+		outY >= 0 && outY < SCRHEIGHT - 1);
+}
+
+//reference https://jacco.ompf2.com/2024/05/22/ray-tracing-with-voxels-in-c-series-part-5/
+Frustum Camera::BuildFrustum()
+{
+	Frustum f;
+	f.plane[0] = cross(topLeft - bottomLeft, topLeft - camPos);   // left
+	f.plane[1] = cross(topRight - camPos, topLeft - bottomLeft);  // right
+	f.plane[2] = cross(topRight - topLeft, topLeft - camPos);     // top
+	f.plane[3] = cross(bottomLeft - camPos, topRight - topLeft);  // bottom
+
+	for (int i = 0; i < 4; i++)
+	{
+		f.plane[i].w = planeDist(f.plane[i], camPos);
+	}
+	return f;
+}
