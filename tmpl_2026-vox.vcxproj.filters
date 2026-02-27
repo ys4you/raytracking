@@ -46,6 +46,7 @@
     <ClCompile Include="template\Core\Lighting\SpotLight.cpp" />
     <ClCompile Include="template\Core\Lighting\AreaLight.cpp" />
     <ClCompile Include="template\Core\Material.cpp" />
+    <ClCompile Include="template\Sky.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="renderer.h" />
@@ -104,6 +105,7 @@
     <ClInclude Include="template\Core\Lighting\SpotLight.h" />
     <ClInclude Include="template\Core\Lighting\AreaLight.h" />
     <ClInclude Include="template\Core\Material.h" />
+    <ClInclude Include="template\Sky.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="template">

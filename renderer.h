@@ -1,5 +1,6 @@
 #pragma once
 #include "camera.h"
+#include "Sky.h"
 
 class Light;
 class PointLight;
@@ -68,7 +69,7 @@ public:
 	void Tick( float deltaTime );
 	void UI();
 	void LightUI() const;
-	bool MaterialUI(const char* label, Material& material);
+	static bool MaterialUI(const char* label, Material& material);
 
 	void Shutdown() { /* nothing here for now */ }
 	// input handling
@@ -124,7 +125,11 @@ public:
 	static constexpr int BN_SIZE = 256;
 	uint8_t* blueNoise = nullptr;
 
-	const char* LightTypeName(Light* light) const;
+	static const char* LightTypeName(Light* light);
+
+	//sky
+	Sky sky;
+
 
 };
 

@@ -94,8 +94,8 @@ Scene::Scene()
     }
     else
     {
-        LoadGrid(grid, "assets/ReproScene.bin");
-        //LoadGrid(grid, "assets/TestScene.bin");
+        //LoadGrid(grid, "assets/ReproScene.bin");
+        LoadGrid(grid, "assets/TestScene.bin");
     }
 
 

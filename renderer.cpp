@@ -19,8 +19,11 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
     scene.FindNearest(ray);
 
     // Safety check for background or invalid material
-    if (ray.voxel == 0 || ray.materialIndex < 0 || ray.materialIndex >= MAT_COUNT)
-        return float3(0.53f, 0.81f, 0.92f);
+    if (ray.voxel == 0)
+        return sky.GetSkyColor(ray.D);
+
+    if (ray.materialIndex < 0 || ray.materialIndex >= MAT_COUNT)
+        return float3(1, 0, 1); // debug magenta
 
     const Material& mat = scene.materials[ray.materialIndex];
 
@@ -56,7 +59,7 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
 
         // Safety check
         if (aRay.voxel == 0 || aRay.materialIndex < 0 || aRay.materialIndex >= MAT_COUNT)
-            return float3(0.53f, 0.81f, 0.92f);
+            return sky.GetSkyColor(ray.D);
 
         return Trace(aRay, depth + 1) * scene.materials[aRay.materialIndex].albedo;
     }
@@ -139,33 +142,34 @@ void Renderer::Init()
 
 
 	// Create lights
-	pointLight = new PointLight({ 1,1,1 }, { 1,1,1 });
-	pointLight->enabled = false;
+	//pointLight = new PointLight({ 1,1,1 }, { 1,1,1 });
+	//pointLight->enabled = false;
 
-	dirLight = new DirectionalLight({ 0.5f, -0.7f,0.45f }, { 1,1,1 });
-    dirLight->enabled = true;
+	//dirLight = new DirectionalLight({ 0.5f, -0.7f,0.45f }, { 1,1,1 });
+ //   dirLight->enabled = true;
 
-	spotLight = new SpotLight({ 1.5f,1.5f,1.4f }, { -0.57f,-0.58f,-0.5f }, { 1,1,0.8f }, 10.f);
-	spotLight->enabled = true;
+	//spotLight = new SpotLight({ 1.5f,1.5f,1.4f }, { -0.57f,-0.58f,-0.5f }, { 1,1,0.8f }, 10.f);
+	//spotLight->enabled = true;
 
-    float3 center = float3(0, 5, 0);
+    //float3 center = float3(0, 5, 0);
 
-    float3 edge1 = float3(4, 0, 0);   // width
-    float3 edge2 = float3(0, 0, 2);   // height
+    //float3 edge1 = float3(4, 0, 0);   // width
+    //float3 edge2 = float3(0, 0, 2);   // height
 
-    float3 corner = center - edge1 * 0.5f - edge2 * 0.5f;
+    //float3 corner = center - edge1 * 0.5f - edge2 * 0.5f;
 
-    areaLight = new AreaLight(
-        corner,
-        edge1,
-        edge2,
-        float3(10.0f, 10.0f, 10.0f), // bright white (area lights need energy)  with 1,1,1... lights are dim
-        16, 16                         // 16 samples total
-    );
+    //areaLight = new AreaLight(
+    //    corner,
+    //    edge1,
+    //    edge2,
+    //    float3(10.0f, 10.0f, 10.0f), // bright white (area lights need energy)  with 1,1,1... lights are dim
+    //    16, 16                         // 16 samples total
+    //);
 
-    areaLight->enabled = false;
+    //areaLight->enabled = false;
 
-	lights = { pointLight, dirLight, spotLight, areaLight };
+    //lights = { pointLight, dirLight, spotLight, areaLight };
+    lights = { &sky.sun, &sky.moon};
 
     //accumulator
     accumulator = new float3[SCRWIDTH * SCRHEIGHT];
@@ -207,17 +211,21 @@ void Renderer::Tick(float deltaTime)
 
         if (!cameraMoving)
         {
-            // --- STATIONARY ---
-            // Read history from the exact same pixel - no bilinear blur,
-            // no reprojection. Pure 1/N running average converges to ground truth.
-            int n = min(sampleCountPerPixel[idx] + 1, 256);
-            sampleCountPerPixel[idx] = n;
-            float alpha = 1.0f / (float)n;
-            blended = history[idx] * (1.0f - alpha) + sample * alpha;
+            if (r.voxel == 0) // Sky pixel — never accumulate, always use current
+            {
+                blended = sample;
+                sampleCountPerPixel[idx] = 1;
+            }
+            else              // Geometry pixel — accumulate as normal
+            {
+                int n = min(sampleCountPerPixel[idx] + 1, 256);
+                sampleCountPerPixel[idx] = n;
+                float alpha = 1.0f / (float)n;
+                blended = history[idx] * (1.0f - alpha) + sample * alpha;
+            }
         }
         else if (r.voxel > 0)
         {
-            // --- MOVING, HIT GEOMETRY ---
             float3 P = r.O + r.t * r.D;
             float prev_x, prev_y;
 
@@ -255,15 +263,12 @@ void Renderer::Tick(float deltaTime)
             }
             else
             {
-                // Hit geometry but outside previous frame - use raw sample
                 blended = sample;
                 sampleCountPerPixel[idx] = 1;
             }
         }
         else
         {
-            // --- MOVING, HIT SKY ---
-            // Sky has no world-space point to reproject, just use raw sample
             blended = sample;
             sampleCountPerPixel[idx] = 1;
         }
@@ -272,11 +277,9 @@ void Renderer::Tick(float deltaTime)
         screen->pixels[idx] = RGBF32_to_RGB8(blended);
     }
 
-    // Save camera state AFTER render, BEFORE HandleInput.
-    // This records which camera was used to render this frame,
-    // which next frame needs for correct reprojection.
     prevCamera = camera;
 
+    sky.Update(deltaTime);
     camera.HandleInput(deltaTime);
 
     swap(history, accumulator);
@@ -301,7 +304,7 @@ void Renderer::UI()
     ImGui::Text("Renderer");
     ImGui::Separator();
     ImGui::Text("Voxel: %i",
-        camera.GetPinholeRay((float)mousePos.x, (float)mousePos.y).voxel);
+        camera.GetPinholeRay(static_cast<float>(mousePos.x), static_cast<float>(mousePos.y)).voxel);
     ImGui::Text("%.2f ms | %.1f FPS", avgFrameTimeMs, fps);
     ImGui::Text("%.1f Mrays/s", rps);
     ImGui::EndChild();
@@ -347,6 +350,38 @@ void Renderer::UI()
         }
     }
 
+    ImGui::Spacing();
+    // ===== SKY =====
+    if (ImGui::CollapsingHeader("Sky", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        bool skyChanged = false;
+
+        skyChanged |= ImGui::SliderFloat("Time of Day", &sky.timeOfDay, 0.0f, 1.0f, "%.3f");
+        skyChanged |= ImGui::SliderFloat("Cycle Speed", &sky.cycleSpeed, 0.0f, 0.1f, "%.4f");
+        skyChanged |= ImGui::Checkbox("Animate", &sky.animate);
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Text("Sun");
+        skyChanged |= ImGui::ColorEdit3("Sun Color (noon)", &sky.sunNoonColor.x);
+        skyChanged |= ImGui::ColorEdit3("Sun Color (horizon)", &sky.sunHorizonColor.x);
+        skyChanged |= ImGui::SliderFloat("Sun Intensity", &sky.sunIntensity, 0.0f, 10.0f);
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Text("Moon");
+        skyChanged |= ImGui::ColorEdit3("Moon Color", &sky.moonColor.x);
+        skyChanged |= ImGui::SliderFloat("Moon Intensity", &sky.moonIntensity, 0.0f, 1.0f);
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Text("Sky Colors");
+        skyChanged |= ImGui::ColorEdit3("Zenith", &sky.zenithColor.x);
+        skyChanged |= ImGui::ColorEdit3("Horizon", &sky.horizonColor.x);
+
+        // Manual time scrubbing resets accumulator too
+        if (skyChanged) ResetAccumulator();
+    }
     ImGui::Spacing();
 
     // ===== LIGHTS =====
@@ -456,10 +491,10 @@ bool Renderer::MaterialUI(const char* label, Material& material)
     if (ImGui::TreeNode(label))
     {
         static const char* TypeLabels[] = { "Lambertian", "Metal", "Dielectric", "Emissive" };
-        int type = (int)material.type;
+        int type = static_cast<int>(material.type);
         if (ImGui::Combo("Shader", &type, TypeLabels, IM_ARRAYSIZE(TypeLabels)))
         {
-            material.type = (MaterialType)type;
+            material.type = static_cast<MaterialType>(type);
             changed = true;
         }
 
@@ -508,7 +543,7 @@ void Tmpl8::Renderer::ResetAccumulator()
 }
 
 
-const char* Renderer::LightTypeName(Light* light) const
+const char* Renderer::LightTypeName(Light* light)
 {
     if (dynamic_cast<PointLight*>(light))       return "Point Light";
     if (dynamic_cast<DirectionalLight*>(light)) return "Directional Light";
@@ -525,7 +560,7 @@ void Renderer::MouseDown(int button)
         if (!selectionLocked)
         {
             // Use pinhole ray for stable selection
-            Ray r = camera.GetPinholeRay((float)mousePos.x, (float)mousePos.y);
+            Ray r = camera.GetPinholeRay(static_cast<float>(mousePos.x), static_cast<float>(mousePos.y));
             scene.FindNearest(r);
 
             if (r.materialIndex != -1)
