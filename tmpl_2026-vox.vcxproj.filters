@@ -47,6 +47,7 @@
     <ClCompile Include="template\Core\Lighting\AreaLight.cpp" />
     <ClCompile Include="template\Core\Material.cpp" />
     <ClCompile Include="template\Sky.cpp" />
+    <ClCompile Include="lib\VoxLoader.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="renderer.h" />
@@ -106,6 +107,8 @@
     <ClInclude Include="template\Core\Lighting\AreaLight.h" />
     <ClInclude Include="template\Core\Material.h" />
     <ClInclude Include="template\Sky.h" />
+    <ClInclude Include="lib\VoxLoader.h" />
+    <ClInclude Include="template\Core\TextureTable.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="template">

@@ -1,7 +1,7 @@
 #pragma once
 
 // high level settings
-#define WORLDSIZE 128 // power of 2. Warning: max 512 for a 512x512x512x4 bytes = 512MB world!
+#define WORLDSIZE 256 // power of 2. Warning: max 512 for a 512x512x512x4 bytes = 512MB world!
 #define GRIDSIZE  WORLDSIZE              // 128
 #define GRIDSIZE2 WORLDSIZE * WORLDSIZE  // 16,384  (one XZ slice)
 #define GRIDSIZE3 WORLDSIZE * WORLDSIZE * WORLDSIZE  // 2,097,152 (whole grid)
@@ -16,23 +16,12 @@
 enum MaterialID : uint8_t
 {
 	MAT_NONE = 0,
-	MAT_LAMBERTIAN = 1,
-	MAT_MIRROR = 2,
-	MAT_DIELECTRIC = 3,
-	MAT_LAMBERTIAN_WHITE = 4,
-	MAT_LAMBERTIAN_GRAY = 5,
-	MAT_RED = 6,
-	MAT_GREEN = 7,
-	MAT_BLUE = 8,
-
-	MAT_ORANGE = 9,
-	MAT_YELLOW = 10,
-	MAT_PURPLE = 11,
-	MAT_CYAN = 12,
-	MAT_BROWN = 13,
-	MAT_TEAL = 14,
-	MAT_COUNT            // now 15
+	MAT_MIRROR = 1,
+	MAT_DIELECTRIC = 2,
+	MAT_COUNT      // now 3
 };
+
+static constexpr int TOTAL_MATS = MAT_COUNT + 256;
 
 
 
@@ -56,7 +45,7 @@ namespace Tmpl8 {
 		bool IsOccluded(Ray& ray) const;
 		void Set(const uint x, const uint y, const uint z, const uint v);
 		unsigned int* grid; // voxel payload is 'unsigned int', interpretation of the bits is free!
-		std::array<Material, MAT_COUNT> materials;
+		std::array<Material, MAT_COUNT + 256> materials;
 
 	private:
 		bool Setup3DDDA(Ray& ray, DDAState& state) const;

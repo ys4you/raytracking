@@ -1,5 +1,7 @@
 #include "template.h"
 
+#include "Core/TextureTable.h"
+
 Ray::Ray( const float3 origin, const float3 direction, const float rayLength, const uint rgb )
 	: O( origin ), D( normalize( direction ) ), t( rayLength ), voxel( rgb )
 {
@@ -22,15 +24,18 @@ float3 Ray::GetNormal() const
 float3 Ray::GetAlbedo(const Scene& scene) const
 {
     if (voxel < MAT_COUNT)
-    {
         return scene.materials[voxel].albedo;
+
+    // DEBUG — print first time we decode a vox voxel
+    static bool printed = false;
+    if (!printed) {
+        printf("[GetAlbedo] voxel=%u  albedo=%.2f %.2f %.2f\n",
+            voxel,
+            scene.materials[voxel].albedo.x,
+            scene.materials[voxel].albedo.y,
+            scene.materials[voxel].albedo.z);
+        printed = true;
     }
-    else
-    {
-        // decode original RGB888 colour from the .bin file
-        float r = ((voxel >> 16) & 0xFF) / 255.0f;
-        float g = ((voxel >> 8) & 0xFF) / 255.0f;
-        float b = (voxel & 0xFF) / 255.0f;
-        return float3(r, g, b);
-    }
+
+    return scene.materials[voxel].albedo;
 }

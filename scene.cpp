@@ -1,5 +1,6 @@
 #include "template.h"
 
+#include "VoxLoader.h"
 #include "Core/Material.h"
 
 #include "Core/Material.h"
@@ -32,10 +33,6 @@ Scene::Scene()
     // Initialize materials
     materials.fill(Material{});
 
-    // Lambertian base (optional)
-    materials[MAT_LAMBERTIAN].type = MaterialType::Lambertian;
-    materials[MAT_LAMBERTIAN].albedo = { 0.8f, 0.7f, 0.6f };
-
     // Mirror
     materials[MAT_MIRROR].type = MaterialType::Metal;
     materials[MAT_MIRROR].albedo = { 0.9f, 0.9f, 0.95f };
@@ -47,55 +44,11 @@ Scene::Scene()
     materials[MAT_DIELECTRIC].albedo = { 1.0f, 1.0f, 1.0f };
     materials[MAT_DIELECTRIC].ior = 1.5f;
 
-
-    ///TestScene
-    // Checkerboard floor
-    materials[MAT_LAMBERTIAN_WHITE].type = MaterialType::Lambertian;
-    materials[MAT_LAMBERTIAN_WHITE].albedo = { 0.9f, 0.9f, 0.9f };
-
-    materials[MAT_LAMBERTIAN_GRAY].type = MaterialType::Lambertian;
-    materials[MAT_LAMBERTIAN_GRAY].albedo = { 0.3f, 0.3f, 0.3f };
-
-    // Colored cubes
-    materials[MAT_RED].type = MaterialType::Lambertian;
-    materials[MAT_RED].albedo = { 1.0f, 0.26f, 0.26f };
-
-    materials[MAT_GREEN].type = MaterialType::Lambertian;
-    materials[MAT_GREEN].albedo = { 0.26f, 1.0f, 0.26f };
-
-    materials[MAT_BLUE].type = MaterialType::Lambertian;
-    materials[MAT_BLUE].albedo = { 0.26f, 0.26f, 1.0f };
-
-
-    materials[MAT_ORANGE].type = MaterialType::Lambertian;
-    materials[MAT_ORANGE].albedo = { 1.0f, 0.55f, 0.10f };
-
-    materials[MAT_YELLOW].type = MaterialType::Lambertian;
-    materials[MAT_YELLOW].albedo = { 1.0f, 0.90f, 0.10f };
-
-    materials[MAT_PURPLE].type = MaterialType::Lambertian;
-    materials[MAT_PURPLE].albedo = { 0.55f, 0.10f, 0.90f };
-
-    materials[MAT_CYAN].type = MaterialType::Lambertian;
-    materials[MAT_CYAN].albedo = { 0.10f, 0.85f, 0.85f };
-
-    materials[MAT_BROWN].type = MaterialType::Lambertian;
-    materials[MAT_BROWN].albedo = { 0.45f, 0.28f, 0.12f };
-
-    materials[MAT_TEAL].type = MaterialType::Lambertian;
-    materials[MAT_TEAL].albedo = { 0.10f, 0.55f, 0.50f };
-    ///TestScene EOD
-
-    const bool GENERATE = false; 
-
-    if (GENERATE)
-    {
-
-    }
-    else
+    //loading the map
     {
         //LoadGrid(grid, "assets/ReproScene.bin");
-        LoadGrid(grid, "assets/TestScene.bin");
+        //LoadGrid(grid, "assets/TestScene.bin");
+    	VoxLoader::Load("assets/menger.vox", grid, GRIDSIZE, materials.data());
     }
 
 

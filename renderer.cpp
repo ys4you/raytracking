@@ -22,8 +22,8 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
     if (ray.voxel == 0)
         return sky.GetSkyColor(ray.D);
 
-    if (ray.materialIndex < 0 || ray.materialIndex >= MAT_COUNT)
-        return float3(1, 0, 1); // debug magenta
+    if (ray.materialIndex < 0 || ray.materialIndex >= TOTAL_MATS)
+        return float3(1, 0, 1);
 
     const Material& mat = scene.materials[ray.materialIndex];
 
@@ -58,7 +58,7 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
         scene.FindNearest(aRay);
 
         // Safety check
-        if (aRay.voxel == 0 || aRay.materialIndex < 0 || aRay.materialIndex >= MAT_COUNT)
+        if (aRay.voxel == 0 || aRay.materialIndex < 0 || aRay.materialIndex >= TOTAL_MATS)
             return sky.GetSkyColor(ray.D);
 
         return Trace(aRay, depth + 1) * scene.materials[aRay.materialIndex].albedo;
@@ -79,7 +79,7 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
         {
             Ray reflectedRay(sp.position + N * EPSILON, reflect(I, N));
             scene.FindNearest(reflectedRay);
-            if (reflectedRay.voxel == 0 || reflectedRay.materialIndex < 0 || reflectedRay.materialIndex >= MAT_COUNT)
+            if (reflectedRay.voxel == 0 || reflectedRay.materialIndex < 0 || reflectedRay.materialIndex >= TOTAL_MATS)
                 return float3(0.53f, 0.81f, 0.92f);
             return Trace(reflectedRay, depth + 1);
         }
@@ -87,7 +87,7 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
         {
             Ray refractedRay(sp.position - N * EPSILON, refracted);
             scene.FindNearest(refractedRay);
-            if (refractedRay.voxel == 0 || refractedRay.materialIndex < 0 || refractedRay.materialIndex >= MAT_COUNT)
+            if (refractedRay.voxel == 0 || refractedRay.materialIndex < 0 || refractedRay.materialIndex >= TOTAL_MATS)
                 return float3(0.53f, 0.81f, 0.92f);
             return Trace(refractedRay, depth + 1);
         }
@@ -142,8 +142,8 @@ void Renderer::Init()
 
 
 	// Create lights
-	//pointLight = new PointLight({ 1,1,1 }, { 1,1,1 });
-	//pointLight->enabled = false;
+	pointLight = new PointLight({ 1,1,1 }, { 1,1,1 });
+	pointLight->enabled = false;
 
 	//dirLight = new DirectionalLight({ 0.5f, -0.7f,0.45f }, { 1,1,1 });
  //   dirLight->enabled = true;
@@ -169,7 +169,7 @@ void Renderer::Init()
     //areaLight->enabled = false;
 
     //lights = { pointLight, dirLight, spotLight, areaLight };
-    lights = { &sky.sun, &sky.moon};
+    lights = { &sky.sun, &sky.moon, pointLight};
 
     //accumulator
     accumulator = new float3[SCRWIDTH * SCRHEIGHT];
@@ -471,7 +471,7 @@ void Renderer::UI()
         ImGui::Spacing();
         if (MaterialUI("Mirror", scene.materials[MAT_MIRROR])) materialsChanged = true;
         if (MaterialUI("Dielectric", scene.materials[MAT_DIELECTRIC])) materialsChanged = true;
-        if (MaterialUI("Lambertian", scene.materials[MAT_LAMBERTIAN])) materialsChanged = true;
+        //if (MaterialUI("Lambertian", scene.materials[MAT_LAMBERTIAN])) materialsChanged = true;
 
         if (materialsChanged) ResetAccumulator();
     }

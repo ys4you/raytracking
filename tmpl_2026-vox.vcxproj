@@ -122,6 +122,7 @@
   </ItemDefinitionGroup>
   <!-- END Custom section -->
   <ItemGroup>
+    <ClCompile Include="lib\VoxLoader.cpp" />
     <ClCompile Include="template\Core\Lighting\AreaLight.cpp" />
     <ClCompile Include="template\Core\Lighting\DirectionalLight.cpp" />
     <ClCompile Include="lib\imgui\imgui.cpp" />
@@ -150,6 +151,7 @@
     <ClCompile Include="renderer.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="lib\VoxLoader.h" />
     <ClInclude Include="template\Core\Lighting\AreaLight.h" />
     <ClInclude Include="camera.h" />
     <ClInclude Include="template\Core\Lighting\DirectionalLight.h" />
@@ -168,6 +170,7 @@
     <ClInclude Include="template\Core\Lighting\SpotLight.h" />
     <ClInclude Include="template\Core\Material.h" />
     <ClInclude Include="template\Core\ShadingPoint.h" />
+    <ClInclude Include="template\Core\TextureTable.h" />
     <ClInclude Include="template\opencl.h" />
     <ClInclude Include="template\opengl.h" />
     <ClInclude Include="template\Sky.h" />
