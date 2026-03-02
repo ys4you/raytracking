@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include "HDRCubemap.h"
 #include "Core/Lighting/DirectionalLight.h"
 
 class Sky
@@ -29,5 +30,9 @@ public:
 
 private:
     void UpdateLights();
+    float3 SampleHDR(const float3& dir) const;
+    float3 GetProceduralSky(const float3& dir) const;
+
     HDRCubemap hdrSky;
+
 };

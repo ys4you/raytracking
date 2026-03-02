@@ -122,6 +122,8 @@
   </ItemDefinitionGroup>
   <!-- END Custom section -->
   <ItemGroup>
+    <ClCompile Include="HDRCubemap.cpp" />
+    <ClCompile Include="stb_image_impl.cpp" />
     <ClCompile Include="lib\VoxLoader.cpp" />
     <ClCompile Include="Sphere.cpp" />
     <ClCompile Include="template\Core\Lighting\AreaLight.cpp" />
@@ -152,6 +154,7 @@
     <ClCompile Include="renderer.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="HDRCubemap.h" />
     <ClInclude Include="lib\VoxLoader.h" />
     <ClInclude Include="Sphere.h" />
     <ClInclude Include="template\Core\Lighting\AreaLight.h" />
