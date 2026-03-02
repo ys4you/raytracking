@@ -9,41 +9,53 @@
 
 
 // -----------------------------------------------------------
-// Calculate light transport via a ray
+// Calculate light transport via a ray (handles voxels + spheres)
 // -----------------------------------------------------------
 float3 Renderer::Trace(Ray& ray, int depth, int, int)
 {
     const int MAX_DEPTH = 5;
     if (depth >= MAX_DEPTH) return float3(0, 0, 0);
 
+    // Find nearest intersection (voxels or spheres)
     scene.FindNearest(ray);
 
-    // Safety check for background or invalid material
-    if (ray.voxel == 0)
+    // No hit: return sky color
+    if (ray.voxel == 0 && ray.sphereIndex < 0)
         return sky.GetSkyColor(ray.D);
 
-    if (ray.materialIndex < 0 || ray.materialIndex >= TOTAL_MATS)
-        return float3(1, 0, 1);
+    // Determine material
+    int matIndex = -1;
+    if (ray.sphereIndex >= 0)
+        matIndex = scene.spheres[ray.sphereIndex].material;
+	else if (ray.voxel > 0)
+        matIndex = ray.materialIndex;
 
-    const Material& mat = scene.materials[ray.materialIndex];
+    if (matIndex < 0 || matIndex >= TOTAL_MATS)
+        return float3(1, 0, 1); // invalid material
 
+    const Material& mat = scene.materials[matIndex];
+
+    // Build shading point
     ShadingPoint sp;
     sp.position = ray.IntersectionPoint();
-    sp.normal = ray.GetNormal();
+    sp.normal = ray.GetNormal(scene); // works for both voxels & spheres
     sp.albedo = ray.GetAlbedo(scene);
 
     if (debugNormals)
         return 0.5f * (sp.normal + float3(1.0f));
 
+    // -------------------------
+    // Material shading
+    // -------------------------
     switch (mat.type)
     {
     case MaterialType::Lambertian:
     {
-        float3 result(0);
+        float3 color(0);
         for (Light* light : lights)
             if (light->enabled)
-                result += light->Illuminate(sp, scene);
-        return result * mat.albedo;
+                color += light->Illuminate(sp, scene) * mat.albedo;
+        return color;
     }
 
     case MaterialType::Metal:
@@ -54,14 +66,8 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
             R += mat.roughness * RandomInUnitSphere();
         R = normalize(R);
 
-        Ray aRay(sp.position + N * EPSILON, R);
-        scene.FindNearest(aRay);
-
-        // Safety check
-        if (aRay.voxel == 0 || aRay.materialIndex < 0 || aRay.materialIndex >= TOTAL_MATS)
-            return sky.GetSkyColor(ray.D);
-
-        return Trace(aRay, depth + 1) * scene.materials[aRay.materialIndex].albedo;
+        Ray reflectedRay(sp.position + N * EPSILON, R);
+        return Trace(reflectedRay, depth + 1) * mat.albedo;
     }
 
     case MaterialType::Dielectric:
@@ -78,17 +84,11 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
         if (RandomFloat() < reflect_prob)
         {
             Ray reflectedRay(sp.position + N * EPSILON, reflect(I, N));
-            scene.FindNearest(reflectedRay);
-            if (reflectedRay.voxel == 0 || reflectedRay.materialIndex < 0 || reflectedRay.materialIndex >= TOTAL_MATS)
-                return float3(0.53f, 0.81f, 0.92f);
             return Trace(reflectedRay, depth + 1);
         }
         else
         {
             Ray refractedRay(sp.position - N * EPSILON, refracted);
-            scene.FindNearest(refractedRay);
-            if (refractedRay.voxel == 0 || refractedRay.materialIndex < 0 || refractedRay.materialIndex >= TOTAL_MATS)
-                return float3(0.53f, 0.81f, 0.92f);
             return Trace(refractedRay, depth + 1);
         }
     }
@@ -97,7 +97,8 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
         return mat.emission * mat.emissionStr;
     }
 
-    return float3(1, 0, 1); // fallback
+    // Fallback color
+    return float3(1, 0, 1);
 }
 /* old version 
 float3 Renderer::Trace( Ray& ray, int depth, int, int )w
@@ -211,17 +212,12 @@ void Renderer::Tick(float deltaTime)
 
         if (!cameraMoving)
         {
-            if (r.voxel == 0) // Sky pixel — never accumulate, always use current
-            {
+            if (r.voxel == 0) // Sky pixel
                 blended = sample;
-                sampleCountPerPixel[idx] = 1;
-            }
-            else              // Geometry pixel — accumulate as normal
+            else              // Geometry pixel — opaque: overwrite history
             {
-                int n = min(sampleCountPerPixel[idx] + 1, 256);
-                sampleCountPerPixel[idx] = n;
-                float alpha = 1.0f / (float)n;
-                blended = history[idx] * (1.0f - alpha) + sample * alpha;
+                blended = sample; // <- fully opaque
+                sampleCountPerPixel[idx] = 1; // reset sample count for this pixel
             }
         }
         else if (r.voxel > 0)
@@ -290,6 +286,8 @@ void Renderer::Tick(float deltaTime)
     avgFrameTimeMs = lastFrameTime * 1000.0f;
     fps = 1.0f / lastFrameTime;
     rps = (float)totalRaysThisFrame / (lastFrameTime * 1000000.0f);
+
+    printf("MAT_COUNT = %d, MAT_GREEN = %d\n", MAT_COUNT, MAT_GREEN);
 }
 
 // ----------------------------------------------------------- 

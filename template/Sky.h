@@ -29,4 +29,5 @@ public:
 
 private:
     void UpdateLights();
+    HDRCubemap hdrSky;
 };

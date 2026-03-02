@@ -1,7 +1,9 @@
 #pragma once
 
+#include "Sphere.h"
+
 // high level settings
-#define WORLDSIZE 256 // power of 2. Warning: max 512 for a 512x512x512x4 bytes = 512MB world!
+#define WORLDSIZE 512 // power of 2. Warning: max 512 for a 512x512x512x4 bytes = 512MB world!
 #define GRIDSIZE  WORLDSIZE              // 128
 #define GRIDSIZE2 WORLDSIZE * WORLDSIZE  // 16,384  (one XZ slice)
 #define GRIDSIZE3 WORLDSIZE * WORLDSIZE * WORLDSIZE  // 2,097,152 (whole grid)
@@ -13,21 +15,22 @@
 // epsilon
 #define EPSILON		0.00001f
 
-enum MaterialID : uint8_t
+enum MaterialID : uint
 {
 	MAT_NONE = 0,
 	MAT_MIRROR = 1,
 	MAT_DIELECTRIC = 2,
-	MAT_COUNT      // now 3
+	MAT_GREEN = 3,
+	MAT_COUNT = 4
+	// vox palette goes into slots 4-259
 };
 
 static constexpr int TOTAL_MATS = MAT_COUNT + 256;
 
-
-
 struct Material;
 
-namespace Tmpl8 {
+namespace Tmpl8
+{
 
 	class Scene
 	{
@@ -39,6 +42,7 @@ namespace Tmpl8 {
 			float t;
 			float3 tdelta;
 			float3 tmax;
+			int axis;
 		};
 		Scene();
 		void FindNearest(Ray& ray) const;
@@ -46,6 +50,8 @@ namespace Tmpl8 {
 		void Set(const uint x, const uint y, const uint z, const uint v);
 		unsigned int* grid; // voxel payload is 'unsigned int', interpretation of the bits is free!
 		std::array<Material, MAT_COUNT + 256> materials;
+
+		std::vector<Sphere> spheres;
 
 	private:
 		bool Setup3DDDA(Ray& ray, DDAState& state) const;

@@ -123,6 +123,7 @@
   <!-- END Custom section -->
   <ItemGroup>
     <ClCompile Include="lib\VoxLoader.cpp" />
+    <ClCompile Include="Sphere.cpp" />
     <ClCompile Include="template\Core\Lighting\AreaLight.cpp" />
     <ClCompile Include="template\Core\Lighting\DirectionalLight.cpp" />
     <ClCompile Include="lib\imgui\imgui.cpp" />
@@ -152,6 +153,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="lib\VoxLoader.h" />
+    <ClInclude Include="Sphere.h" />
     <ClInclude Include="template\Core\Lighting\AreaLight.h" />
     <ClInclude Include="camera.h" />
     <ClInclude Include="template\Core\Lighting\DirectionalLight.h" />
