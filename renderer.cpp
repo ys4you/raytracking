@@ -16,29 +16,25 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
     const int MAX_DEPTH = 5;
     if (depth >= MAX_DEPTH) return float3(0, 0, 0);
 
-    // Find nearest intersection (voxels or spheres)
     scene.FindNearest(ray);
 
-    // No hit: return sky color
     if (ray.voxel == 0 && ray.sphereIndex < 0)
         return sky.GetSkyColor(ray.D);
 
-    // Determine material
-    int matIndex = -1;
+    const Material* matPtr = nullptr;
+
     if (ray.sphereIndex >= 0)
-        matIndex = scene.spheres[ray.sphereIndex].material;
-	else if (ray.voxel > 0)
-        matIndex = ray.materialIndex;
+        matPtr = &scene.GetSphereMat(scene.spheres[ray.sphereIndex].material);
+    else if (ray.voxel > 0)
+        matPtr = &scene.GetMat(ray.materialIndex);
 
-    if (matIndex < 0 || matIndex >= TOTAL_MATS)
-        return float3(1, 0, 1); // invalid material
-
-    const Material& mat = scene.materials[matIndex];
+    if (!matPtr) return float3(1, 0, 1);
+    const Material& mat = *matPtr;
 
     // Build shading point
     ShadingPoint sp;
     sp.position = ray.IntersectionPoint();
-    sp.normal = ray.GetNormal(scene); // works for both voxels & spheres
+    sp.normal = ray.GetNormal(scene);
     sp.albedo = ray.GetAlbedo(scene);
 
     if (debugNormals)
@@ -121,6 +117,7 @@ return albedo * max( 0.3f, dot( N, L ) );
 // -----------------------------------------------------------
 void Renderer::Init()
 {
+    std::cout << "screen width: " << SCRWIDTH << " screen height: " << SCRHEIGHT << std::endl;
     sampleCountPerPixel = new int[SCRWIDTH * SCRHEIGHT]();
 
     //blue noise
@@ -287,7 +284,13 @@ void Renderer::Tick(float deltaTime)
     fps = 1.0f / lastFrameTime;
     rps = (float)totalRaysThisFrame / (lastFrameTime * 1000000.0f);
 
-    printf("MAT_COUNT = %d, MAT_GREEN = %d\n", MAT_COUNT, MAT_GREEN);
+    if (rebuildSphereBVH)
+    {
+        scene.BuildSphereBVH();
+        rebuildSphereBVH = false;
+    }
+
+    //printf("MAT_COUNT = %d, MAT_GREEN = %d\n", MAT_COUNT, MAT_GREEN);
 }
 
 // ----------------------------------------------------------- 
@@ -308,6 +311,7 @@ void Renderer::UI()
     ImGui::EndChild();
 
     ImGui::Spacing();
+
 
     // ===== DEBUG =====
     if (ImGui::CollapsingHeader("Debug", ImGuiTreeNodeFlags_DefaultOpen))
@@ -472,6 +476,84 @@ void Renderer::UI()
         //if (MaterialUI("Lambertian", scene.materials[MAT_LAMBERTIAN])) materialsChanged = true;
 
         if (materialsChanged) ResetAccumulator();
+    }
+
+    // ===== SPHERE SPAWNER =====
+    if (ImGui::CollapsingHeader("Sphere Spawner", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        static float3 spawnMin = { 0.1f, 0.1f, 0.1f };
+        static float3 spawnMax = { 0.9f, 0.9f, 0.9f };
+        static float spawnRadius = 0.05f;
+        static int spawnMatIndex = MAT_MIRROR;
+        static const char* countLabels[] = { "1", "10", "100", "1000" };
+        static const int countValues[] = { 1, 10, 100, 1000 };
+        static int selectedCount = 0;
+
+        ImGui::Text("Spawn Range");
+        ImGui::DragFloat3("Min XYZ", &spawnMin.x, 0.01f, 0.0f, 1.0f, "%.2f");
+        ImGui::DragFloat3("Max XYZ", &spawnMax.x, 0.01f, 0.0f, 1.0f, "%.2f");
+
+        // Clamp so min <= max
+        spawnMin.x = min(spawnMin.x, spawnMax.x - 0.01f);
+        spawnMin.y = min(spawnMin.y, spawnMax.y - 0.01f);
+        spawnMin.z = min(spawnMin.z, spawnMax.z - 0.01f);
+
+        ImGui::Spacing();
+        ImGui::SliderFloat("Radius", &spawnRadius, 0.005f, 0.2f, "%.3f");
+
+        // Material picker
+        static const char* matNames[] = { "Mirror", "Dielectric", "Green" };
+        static const uint matIndices[] = { (uint)MAT_MIRROR, (uint)MAT_DIELECTRIC, (uint)MAT_GREEN };        static int selectedMat = 0;
+        ImGui::Combo("Material", &selectedMat, matNames, IM_ARRAYSIZE(matNames));
+        spawnMatIndex = matIndices[selectedMat];
+
+        ImGui::Spacing();
+        ImGui::Text("Count");
+        ImGui::SameLine();
+        for (int i = 0; i < 4; i++)
+        {
+            if (i > 0) ImGui::SameLine();
+            bool active = (selectedCount == i);
+            if (active) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+            if (ImGui::Button(countLabels[i], ImVec2(48, 0)))
+                selectedCount = i;
+            if (active) ImGui::PopStyleColor();
+        }
+
+        ImGui::Spacing();
+        if (ImGui::Button("Spawn Spheres", ImVec2(-1, 0)))
+        {
+            int n = countValues[selectedCount];
+            scene.spheres.reserve(scene.spheres.size() + n);
+            for (int i = 0; i < n; i++)
+            {
+                scene.spheres.push_back(Sphere{
+                    float3(
+                        spawnMin.x + RandomFloat() * (spawnMax.x - spawnMin.x),
+                        spawnMin.y + RandomFloat() * (spawnMax.y - spawnMin.y),
+                        spawnMin.z + RandomFloat() * (spawnMax.z - spawnMin.z)
+                    ),
+                    spawnRadius,
+                    MAT_GREEN
+                    });
+            }
+            rebuildSphereBVH = true;
+            ResetAccumulator();
+        }
+
+        ImGui::SameLine();
+        if (ImGui::Button("Clear Spheres", ImVec2(-1, 0)))
+        {
+            scene.spheres.clear();
+            scene.BuildSphereBVH(); 
+            ResetAccumulator();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Clear Spheres", ImVec2(-1, 0)))
+        {
+            scene.spheres.clear();
+            ResetAccumulator();
+        }
     }
 
     ImGui::End();

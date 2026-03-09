@@ -16,6 +16,7 @@
 // https://github.com/jbikker for examples.
 
 #pragma once
+#include <tiny_bvh.h>
 
 namespace Tmpl8 {
 
@@ -521,6 +522,9 @@ inline int dot( const int4& a, const int4& b ) { return a.x * b.x + a.y * b.y + 
 inline uint dot( const uint2& a, const uint2& b ) { return a.x * b.x + a.y * b.y; }
 inline uint dot( const uint3& a, const uint3& b ) { return a.x * b.x + a.y * b.y + a.z * b.z; }
 inline uint dot( const uint4& a, const uint4& b ) { return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w; }
+inline float dot(const tinybvh::bvhvec2& a, const tinybvh::bvhvec2& b) { return a.x * b.x + a.y * b.y; }
+inline float dot(const tinybvh::bvhvec3& a, const tinybvh::bvhvec3& b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+inline float dot(const tinybvh::bvhvec4& a, const tinybvh::bvhvec4& b) { return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w; }
 
 inline float sqrLength( const float2& v ) { return dot( v, v ); }
 inline float sqrLength( const float3& v ) { return dot( v, v ); }

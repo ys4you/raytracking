@@ -1,55 +1,48 @@
 ﻿#include "template.h"
 
-//Claude helped me with loading in the materials.
-// VoxLoader.cpp  —  lives in lib/ alongside ogt_vox.h
-// ogt_vox.h can be downloaded from: https://github.com/jpaver/opengametools
-
 #define OGT_VOX_IMPLEMENTATION
 #include "ogt_vox.h"
+
 #include "VoxLoader.h"
+#include "VoxelFactory.h"
+#include "Core/Material.h"
 
 #include <stdio.h>
 #include <string.h>
 #include <algorithm>
 
-
-static constexpr unsigned int VOX_MAT_COUNT = MAT_COUNT; // 3
-bool VoxLoader::Load(const char* path, uint* grid, int gridSize, Material* materials)
+bool VoxLoader::Load(const char* path, Tmpl8::Scene& scene)
 {
-    // Read the whole file into memory
+    const bool VERBOSE_LOG = true;
+
     FILE* f = fopen(path, "rb");
-    if (!f)
-    {
-        printf("[VoxLoader] Could not open: %s\n", path);
-        return false;
-    }
+    if (!f) { printf("[VoxLoader] Could not open: %s\n", path); return false; }
 
     fseek(f, 0, SEEK_END);
     long fileSize = ftell(f);
     rewind(f);
+    if (VERBOSE_LOG) printf("[VoxLoader] File size: %ld bytes\n", fileSize);
 
     unsigned char* buffer = new unsigned char[fileSize];
     fread(buffer, 1, fileSize, f);
     fclose(f);
 
-    const ogt_vox_scene* scene = ogt_vox_read_scene(buffer, (unsigned int)fileSize);
+    const ogt_vox_scene* voxScene = ogt_vox_read_scene(buffer, (unsigned int)fileSize);
     delete[] buffer;
 
-    if (!scene)
-    {
-        printf("[VoxLoader] Failed to parse: %s\n", path);
-        return false;
-    }
+    if (!voxScene) { printf("[VoxLoader] Failed to parse: %s\n", path); return false; }
 
-    // --- Build colour lookup table (palette index 0 = empty) --- CLAUDE
-    unsigned int colorLUT[256] = {};
+    if (VERBOSE_LOG)
+        printf("[VoxLoader] Models: %d, Instances: %d\n",
+            voxScene->num_models, voxScene->num_instances);
+
+    // --- Fill Scene materials from palette ---
     for (int i = 1; i < 256; i++)
     {
-        const ogt_vox_rgba& c = scene->palette.color[i];
-        const ogt_vox_matl& m = scene->materials.matl[i];
+        const ogt_vox_rgba& c = voxScene->palette.color[i];
+        const ogt_vox_matl& m = voxScene->materials.matl[i];
 
-        // Build Material entry at palette offset
-        Material& mat = materials[MAT_COUNT + i];
+        Material& mat = scene.materials[MAT_COUNT + (i - 1)];
         mat.albedo = { c.r / 255.f, c.g / 255.f, c.b / 255.f };
 
         switch (m.type)
@@ -58,7 +51,6 @@ bool VoxLoader::Load(const char* path, uint* grid, int gridSize, Material* mater
             mat.type = MaterialType::Metal;
             mat.metallic = 1.0f;
             mat.roughness = (m.content_flags & k_ogt_vox_matl_have_rough) ? m.rough : 0.1f;
-            mat.F0 = lerp(float3{ 0.04f,0.04f,0.04f }, mat.albedo, mat.metallic);
             break;
         case ogt_matl_type_glass:
             mat.type = MaterialType::Dielectric;
@@ -74,90 +66,28 @@ bool VoxLoader::Load(const char* path, uint* grid, int gridSize, Material* mater
             mat.roughness = 1.0f;
             break;
         }
-
-        // Grid stores material index, not raw RGB
-        colorLUT[i] = MAT_COUNT + i;
     }
 
-    int gridSize2 = gridSize * gridSize;
-    int gridSize3 = gridSize * gridSize * gridSize;
-    memset(grid, 0, gridSize3 * sizeof(unsigned int));
-
-    int outOfBoundsCount = 0;
-
-    for (unsigned int inst = 0; inst < scene->num_instances; inst++)
+    // --- Create objects only (no grid placement) ---
+    for (unsigned int inst = 0; inst < voxScene->num_instances; inst++)
     {
-        const ogt_vox_instance& instance = scene->instances[inst];
-        const ogt_vox_model* model = scene->models[instance.model_index];
-
+        const ogt_vox_instance& instance = voxScene->instances[inst];
+        const ogt_vox_model* model = voxScene->models[instance.model_index];
         if (!model) continue;
 
-        unsigned int sizeX = model->size_x;
-        unsigned int sizeY = model->size_y;
-        unsigned int sizeZ = model->size_z;
+        std::vector<uint8_t> voxels(model->voxel_data,
+            model->voxel_data + model->size_x * model->size_y * model->size_z);
 
-        // Pivot = centre of the model in MagicaVoxel local space
-        float pivotX = sizeX * 0.5f;
-        float pivotY = sizeY * 0.5f;
-        float pivotZ = sizeZ * 0.5f;
+        int objIndex = VoxelFactory::CreateObject(scene,
+            model->size_x, model->size_y, model->size_z, voxels);
 
-        // The instance transform is a flat 4x4 row-major float matrix
-        const float* T = &instance.transform.m00;
-
-        // --- 6. Place each non-empty voxel ---
-        for (unsigned int z = 0; z < sizeZ; z++)
-            for (unsigned int y = 0; y < sizeY; y++)
-                for (unsigned int x = 0; x < sizeX; x++)
-                {
-                    // ogt_vox voxel data is stored x -> y -> z
-                    unsigned int voxelIndex = x + y * sizeX + z * sizeX * sizeY;
-                    unsigned char colorIndex = model->voxel_data[voxelIndex];
-                    if (colorIndex == 0) continue; // empty voxel
-
-                    // Local position relative to model pivot
-                    float lx = static_cast<float>(x) - pivotX;
-                    float ly = static_cast<float>(y) - pivotY;
-                    float lz = static_cast<float>(z) - pivotZ;
-
-                    // Apply instance transform (row-major 4x4, translation in last column)
-                    // T layout: [m00 m01 m02 m03 | m10 m11 m12 m13 | m20 m21 m22 m23 | ...]
-                    const ogt_vox_transform& T = instance.transform;
-                    float wx = T.m00 * lx + T.m10 * ly + T.m20 * lz + T.m30;
-                    float wy = T.m01 * lx + T.m11 * ly + T.m21 * lz + T.m31;
-                    float wz = T.m02 * lx + T.m12 * ly + T.m22 * lz + T.m32;
-
-                    // MagicaVoxel is Z-up, right-handed.
-                    // our isY-up.
-                    // Conversion: engine(x, y, z) = vox(x, z, y)
-                    float ex = wx;
-                    float ey = wz; // vox Z  → engine Y
-                    float ez = wy; // vox Y  → engine Z
-
-                    // Map to grid index (centre the scene in the 128^3 grid)
-                    int gx = static_cast<int>(ex + gridSize * 0.5f);
-                    int gy = static_cast<int>(ey + gridSize * 0.5f);
-                    int gz = static_cast<int>(ez + gridSize * 0.5f);
-
-                    // Clip to valid range
-                    if (gx < 0 || gx >= gridSize ||
-                        gy < 0 || gy >= gridSize ||
-                        gz < 0 || gz >= gridSize)
-                    {
-                        outOfBoundsCount++;
-                        continue;
-                    }
-
-                    // Last-write-wins for overlapping voxels
-                    grid[gx + gy * gridSize + gz * gridSize2] = colorLUT[colorIndex];
-                }
+        if (VERBOSE_LOG)
+            printf("[VoxLoader] Created object %d from model %d (%d x %d x %d)\n",
+                objIndex, instance.model_index,
+                model->size_x, model->size_y, model->size_z);
     }
 
-    if (outOfBoundsCount > 0)
-        printf("[VoxLoader] %d voxels were outside the %d^3 grid and skipped.\n",
-            outOfBoundsCount, gridSize);
-
-    ogt_vox_destroy_scene(scene);
-
-    printf("[VoxLoader] Loaded '%s' successfully.\n", path);
+    ogt_vox_destroy_scene(voxScene);
+    printf("[VoxLoader] Loaded '%s' — %d objects created.\n", path, (int)scene.voxelObjects.size());
     return true;
 }

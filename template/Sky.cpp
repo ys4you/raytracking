@@ -1,6 +1,8 @@
 ﻿#include "template.h"
 #include "Sky.h"
 
+//Claude helped with the fading in and out the HDR skybox 
+
 Sky::Sky()
 {
     sun.direction = normalize(float3(0, -1, 0.2f));

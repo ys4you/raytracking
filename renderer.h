@@ -57,6 +57,8 @@ public:
 		return blueNoise[ix + iy * BN_SIZE] * (1.0f / 255.0f);
 	}
 
+	bool rebuildSphereBVH = false;
+
 	float lastFrameTime = 0.0f;     // time of last frame in seconds
 	float avgFrameTimeMs = 0.0f;    // rolling average frame time in ms
 	float fps = 0.0f;               // frames per second
