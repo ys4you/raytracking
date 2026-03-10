@@ -115,6 +115,10 @@ public:
 
 	bool debugNormals = false;
 
+	// Fast shading path used to keep high-sphere scenes interactive.
+	bool fastSphereShading = true;
+	int fastSphereThreshold = 1000;
+
 	uint32_t sampleCount = 0;
 	mat4 lastViewMatrix;
 
@@ -123,7 +127,7 @@ public:
 	void ResetAccumulator();
 
 	int selectedMaterialIndex = -1; // currently selected material
-	bool selectionLocked = false;    // true if we’ve selected something
+	bool selectionLocked = false;    // true if weâ€™ve selected something
 
 	bool editingMaterial = false;
 

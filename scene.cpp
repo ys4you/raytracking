@@ -6,7 +6,7 @@
 
 #include <random>
 
-// Static member definition — shared pointer used by tinybvh callbacks
+// Static member definition â€” shared pointer used by tinybvh callbacks
 // (callbacks are free functions and can't access Scene members directly)
 const Sphere* Scene::g_spheres = nullptr;
 
@@ -41,8 +41,9 @@ static bool SphereIntersect(tinybvh::Ray& ray, uint32_t idx)
     float ocy = ray.O.y - s.center.y;
     float ocz = ray.O.z - s.center.z;
 
-    // Quadratic discriminant: b² - (|oc|² - r²)
-    float b = ocx * ray.D.x + ocy * ray.D.y + ocz * ray.D.z;
+    const float sqrtDisc = sqrtf(disc);
+    float t = -b - sqrtDisc;
+    if (t <= 0) t = -b + sqrtDisc; // front face missed; try back face
     float oc2 = ocx * ocx + ocy * ocy + ocz * ocz;
     float disc = b * b - (oc2 - s.radius * s.radius);
 
@@ -65,7 +66,7 @@ static bool SphereIntersect(tinybvh::Ray& ray, uint32_t idx)
 // Helpers
 // -----------------------------------------------------------
 
-/// @brief  Intersects a ray with the unit cube [0,1]³ using the slab method.
+/// @brief  Intersects a ray with the unit cube [0,1]Â³ using the slab method.
 ///
 /// Also records which axis (0=X, 1=Y, 2=Z) produced the entry plane so
 /// the DDA can determine the hit normal.
@@ -98,7 +99,7 @@ inline float intersect_cube(Ray& ray)
     return tmax >= tmin ? tmin : 1e34f;
 }
 
-/// @brief  Returns true if pos lies strictly inside the unit cube [0,1]³.
+/// @brief  Returns true if pos lies strictly inside the unit cube [0,1]Â³.
 inline bool point_in_cube(const float3& pos)
 {
     return pos.x >= 0 && pos.y >= 0 && pos.z >= 0 &&
@@ -112,7 +113,7 @@ inline bool point_in_cube(const float3& pos)
 /// @brief  Returns the voxel value at world-grid position (x, y, z).
 ///
 /// The two-level structure works as follows:
-///   - The coarse grid stores one cell per BRICK_SIZE³ brick.
+///   - The coarse grid stores one cell per BRICK_SIZEÂ³ brick.
 ///   - If a coarse cell is 0, the entire brick is empty.
 ///   - If the lowest bit is 0, the brick is a solid colour (value >> 1).
 ///   - If the lowest bit is 1, the cell is a brick index (index >> 1).
@@ -126,7 +127,7 @@ uint Scene::GetVoxel(uint x, uint y, uint z) const
     uint gidx = gx + gy * COARSE_SIZE + gz * COARSE_SIZE2;
     uint cell = coarseGrid[gidx];
 
-    if (cell == 0) return 0; // entire brick is empty — early out
+    if (cell == 0) return 0; // entire brick is empty â€” early out
 
     if ((cell & 1) == 0)
         return cell >> 1; // solid-colour brick: return the stored colour
@@ -269,7 +270,7 @@ void Scene::Set(uint x, uint y, uint z, uint v)
 // -----------------------------------------------------------
 void Scene::SetVoxel(int x, int y, int z, uint value)
 {
-    // Bounds check — cast to uint so negative values fail the >= 0 check too
+    // Bounds check â€” cast to uint so negative values fail the >= 0 check too
     if ((uint)x >= WORLDSIZE || (uint)y >= WORLDSIZE || (uint)z >= WORLDSIZE)
         return;
 
@@ -488,6 +489,10 @@ void Scene::FindNearest(Ray& ray) const
 
         while (true)
         {
+            // Sphere already hit closer than our current traversal distance:
+            // no need to march further through voxels.
+            if (s.t >= nearestSphereT) break;
+
             cell = GetVoxel(s.X, s.Y, s.Z);
 
             // Hit condition depends on whether we started inside or outside:
@@ -563,7 +568,7 @@ void Scene::FindNearest(Ray& ray) const
     }
     else
     {
-        // No hit — sky
+        // No hit â€” sky
         ray.t = 1e34f;
         ray.materialIndex = -1;
         ray.axis = -1;
@@ -580,7 +585,7 @@ void Scene::FindNearest(Ray& ray) const
 ///         before it reaches its maximum distance (ray.t).
 ///
 /// Does not test spheres.  Used for shadow rays where only a boolean
-/// result is needed — no distance or material information is returned.
+/// result is needed â€” no distance or material information is returned.
 ///
 /// @param ray  Shadow ray; ray.t must be set to the light distance.
 /// @return     True if the ray is blocked before reaching ray.t.
@@ -596,7 +601,7 @@ bool Scene::IsOccluded(Ray& ray) const
     while (s.t < ray.t) // only traverse up to the light distance
     {
         const uint cell = GetVoxel(s.X, s.Y, s.Z);
-        if (cell) return true; // hit a filled voxel — light is occluded
+        if (cell) return true; // hit a filled voxel â€” light is occluded
 
         // Advance to the next voxel boundary
         if (s.tmax.x < s.tmax.y)
