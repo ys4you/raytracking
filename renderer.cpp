@@ -36,10 +36,10 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
     const Material* matPtr = nullptr;
 
     if (ray.sphereIndex >= 0)
-        // Sphere hit — look up the sphere's material
+        // Sphere hit â€” look up the sphere's material
         matPtr = &scene.GetSphereMat(scene.spheres[ray.sphereIndex].material);
     else if (ray.voxel > 0)
-        // Voxel hit — use the material index stored on the ray
+        // Voxel hit â€” use the material index stored on the ray
         matPtr = &scene.GetMat(ray.materialIndex);
 
     // Safety fallback: magenta indicates a missing material
@@ -58,7 +58,17 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
     if (debugNormals)
         return 0.5f * (sp.normal + float3(1.0f));
 
-    // Material shading — dispatch by material type
+        // Fast-path for very large sphere scenes: skip costly shadow rays and
+        // evaluate a single directional term + small ambient.
+        if (fastSphereShading && ray.sphereIndex >= 0 && (int)scene.spheres.size() >= fastSphereThreshold)
+        {
+            const float3 L = normalize(float3(0.5f, 0.8f, 0.3f));
+            const float ndotl = max(0.0f, dot(sp.normal, L));
+            const float ambient = 0.12f;
+            return mat.albedo * (ambient + 0.88f * ndotl);
+        }
+
+    // Material shading â€” dispatch by material type
     switch (mat.type)
     {
     case MaterialType::Lambertian:
@@ -133,7 +143,7 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
     }
 
     case MaterialType::Emissive:
-        // Emissive surfaces are their own light source — no further tracing needed
+        // Emissive surfaces are their own light source â€” no further tracing needed
         return mat.emission * mat.emissionStr;
     }
 
@@ -172,7 +182,7 @@ void Renderer::Init()
     // Load the blue-noise texture (used for jittered sampling)
     // -------------------------
     // We store it as uint8_t (single channel) rather than in a Surface (uint32_t)
-    // to save memory — we only need the red channel.
+    // to save memory â€” we only need the red channel.
     Surface* bn = new Surface("assets/BlueNoise256x256.png");
 
     assert(bn->width == BN_SIZE && bn->height == BN_SIZE);
@@ -191,11 +201,11 @@ void Renderer::Init()
     // Construct lights
     // -------------------------
 
-    // Sky-owned directional lights (sun & moon) — copied in; synced each frame in Tick()
+    // Sky-owned directional lights (sun & moon) â€” copied in; synced each frame in Tick()
     lights.directionals.push_back(sky.sun);
     lights.directionals.push_back(sky.moon);
 
-    // Point light (disabled by default — toggle in ImGui)
+    // Point light (disabled by default â€” toggle in ImGui)
     {
         PointLight pl{ { 1,1,1 }, { 1,1,1 }, false };
         lights.points.push_back(pl);
@@ -230,11 +240,9 @@ void Renderer::Init()
     // Allocate and zero the frame buffers
     // -------------------------
 
-    // HDR accumulator — stores running average of path-traced samples
-    accumulator = new float3[SCRWIDTH * SCRHEIGHT];
-    memset(accumulator, 0, SCRWIDTH * SCRHEIGHT * sizeof(float3));
+#pragma omp parallel for collapse(2) schedule(static)
 
-    // History buffer — previous frame's output, used for temporal reprojection
+    // History buffer â€” previous frame's output, used for temporal reprojection
     history = new float3[SCRWIDTH * SCRHEIGHT];
     memset(history, 0, SCRWIDTH * SCRHEIGHT * sizeof(float3));
 }
@@ -293,12 +301,12 @@ void Renderer::Tick(float deltaTime)
         {
             if (r.voxel == 0)
             {
-                // Sky pixel — do not accumulate; write the raw sample
+                // Sky pixel â€” do not accumulate; write the raw sample
                 blended = sample;
             }
             else
             {
-                // Geometry pixel — reset and store the new sample (fully opaque blend)
+                // Geometry pixel â€” reset and store the new sample (fully opaque blend)
                 blended = sample;
                 sampleCountPerPixel[idx] = 1; // reset so future frames can accumulate
             }
@@ -351,14 +359,14 @@ void Renderer::Tick(float deltaTime)
             }
             else
             {
-                // Reprojection went off-screen — treat as a new pixel
+                // Reprojection went off-screen â€” treat as a new pixel
                 blended = sample;
                 sampleCountPerPixel[idx] = 1;
             }
         }
         else
         {
-            // Sky pixel while moving — write raw sample, no accumulation
+            // Sky pixel while moving â€” write raw sample, no accumulation
             blended = sample;
             sampleCountPerPixel[idx] = 1;
         }
@@ -386,7 +394,7 @@ void Renderer::Tick(float deltaTime)
     lastFrameTime = frameDuration.count();
     avgFrameTimeMs = lastFrameTime * 1000.0f;
     fps = 1.0f / lastFrameTime;
-    rps = (float)totalRaysThisFrame / (lastFrameTime * 1000000.0f); // Mrays/s
+    rps = (float)(SCRWIDTH * SCRHEIGHT) / (lastFrameTime * 1000000.0f); // Mrays/s
 
     // Rebuild the sphere BVH if a sphere was added or removed this frame
     if (rebuildSphereBVH)
