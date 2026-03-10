@@ -45,7 +45,6 @@
     <ClCompile Include="template\Sky.cpp" />
     <ClCompile Include="lib\VoxLoader.cpp" />
     <ClCompile Include="Sphere.cpp" />
-    <ClCompile Include="HDRCubemap.cpp" />
     <ClCompile Include="stb_image_impl.cpp" />
     <ClCompile Include="lib\tiny_bvh.cpp" />
     <ClCompile Include="VoxelFactory.cpp" />
