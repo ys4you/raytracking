@@ -69,22 +69,21 @@ bool VoxLoader::Load(const char* path, Tmpl8::Scene& scene)
     }
 
     // --- Create objects only (no grid placement) ---
-    for (unsigned int inst = 0; inst < voxScene->num_instances; inst++)
+    for (unsigned int m = 0; m < voxScene->num_models; m++)
     {
-        const ogt_vox_instance& instance = voxScene->instances[inst];
-        const ogt_vox_model* model = voxScene->models[instance.model_index];
+        const ogt_vox_model* model = voxScene->models[m];
         if (!model) continue;
 
-        std::vector<uint8_t> voxels(model->voxel_data,
-            model->voxel_data + model->size_x * model->size_y * model->size_z);
-
+        std::vector<uint8_t> voxels(
+            model->voxel_data,
+            model->voxel_data + model->size_x * model->size_y * model->size_z
+        );
         int objIndex = VoxelFactory::CreateObject(scene,
             model->size_x, model->size_y, model->size_z, voxels);
 
         if (VERBOSE_LOG)
-            printf("[VoxLoader] Created object %d from model %d (%d x %d x %d)\n",
-                objIndex, instance.model_index,
-                model->size_x, model->size_y, model->size_z);
+            printf("[VoxLoader] Created object %d from model %d (%dx%dx%d)\n",
+                objIndex, m, model->size_x, model->size_y, model->size_z);
     }
 
     ogt_vox_destroy_scene(voxScene);

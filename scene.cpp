@@ -163,7 +163,7 @@ Scene::Scene()
     // Initialise all material slots to defaults
     materials.fill(Material{});
 
-    // --- Predefined named materials ---
+    // --- Predefined named materials --
 
     // Polished mirror: near-perfect metal with very low roughness
     materials[MAT_MIRROR].type = MaterialType::Metal;
@@ -194,16 +194,41 @@ Scene::Scene()
     std::uniform_real_distribution<float> rot(0.0f, 2 * PI);
     std::uniform_real_distribution<float> scale(0.1f, 1.0f);
 
-    // Generate 4 random instances (FlattenInstance is commented out for now)
-    for (int i = 0; i < 4; ++i)
-    {
-        float3 position = { posX(gen), posY(gen), posZ(gen) };
-        float3 rotation = { rot(gen),  rot(gen),  rot(gen) };
-        float3 scaleVec = { scale(gen),scale(gen),scale(gen) };
+    //// Generate 4 random instances (FlattenInstance is commented out for now)
+    //for (int i = 0; i < 1; ++i)
+    //{
+    //    float3 position = { posX(gen), posY(gen), posZ(gen) };
+    //    float3 rotation = { rot(gen),  rot(gen),  rot(gen) };
+    //    float3 scaleVec = { scale(gen),scale(gen),scale(gen) };
 
-        //VoxelFactory::FlattenInstance(*this, 0, position, rotation, scaleVec);
+    //    VoxelFactory::FlattenInstance(*this, 0, position, rotation, scaleVec);
+    //}
+
+    static float3 spawnMin = { 0.1f, 0.1f, 0.1f }; // minimum world-space corner
+    static float3 spawnMax = { 0.9f, 0.9f, 0.9f }; // maximum world-space corner
+    static float  spawnRadius = 0.01f;
+
+    for (int i = 0; i < 1000; i++)
+    {
+        // Place each sphere at a random position within the spawn AABB
+        spheres.push_back(Sphere{
+            float3(
+                spawnMin.x + RandomFloat() * (spawnMax.x - spawnMin.x),
+                spawnMin.y + RandomFloat() * (spawnMax.y - spawnMin.y),
+                spawnMin.z + RandomFloat() * (spawnMax.z - spawnMin.z)
+            ),
+            spawnRadius,
+            MAT_GREEN
+            });
     }
 
+	//VoxelFactory::FlattenInstance(
+	//    *this,
+	//    0,
+	//    {128, 128, 128},   // shift to be fully positive inside WORLDSIZE
+	//    {0, 0, 0},
+	//    {1, 1, 1}          // keep scale 1
+	//);
     // Build the sphere acceleration structure
     BuildSphereBVH();
 }
@@ -416,17 +441,21 @@ void Scene::FindNearest(Ray& ray) const
 
     if (spheres.size() >= 2 && sphereBVHReady)
     {
-        // Use the BVH for efficient intersection when there are many spheres
-        tinybvh::Ray bvhRay(
-            tinybvh::bvhvec3(ray.O.x, ray.O.y, ray.O.z),
-            tinybvh::bvhvec3(ray.D.x, ray.D.y, ray.D.z)
-        );
-        sphereBVH.Intersect(bvhRay);
-
-        if (bvhRay.hit.t < 1e30f)
+        const float3& D = ray.D;
+        const float lenSq = D.x * D.x + D.y * D.y + D.z * D.z;
+        if (lenSq > 1e-10f)
         {
-            nearestSphereT = bvhRay.hit.t;
-            nearestSphereIdx = (int)bvhRay.hit.prim;
+            tinybvh::Ray bvhRay(
+                tinybvh::bvhvec3(ray.O.x, ray.O.y, ray.O.z),
+                tinybvh::bvhvec3(D.x, D.y, D.z)
+            );
+            sphereBVH.Intersect(bvhRay);
+
+            if (bvhRay.hit.t < 1e30f)
+            {
+                nearestSphereT = bvhRay.hit.t;
+                nearestSphereIdx = (int)bvhRay.hit.prim;
+            }
         }
     }
     else

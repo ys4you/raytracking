@@ -279,8 +279,8 @@ void Renderer::Tick(float deltaTime)
             if (prevCamera.WorldToScreen(P, prev_x, prev_y))
             {
                 // Bilinear sample of the history buffer at the reprojected position
-                int   ix = (int)prev_x;
-                int   iy = (int)prev_y;
+                int   ix = static_cast<int>(prev_x);
+                int   iy = static_cast<int>(prev_y);
                 float fx = prev_x - ix; // fractional x offset
                 float fy = prev_y - iy; // fractional y offset
 
@@ -615,11 +615,9 @@ void Renderer::UI()
         if (ImGui::Button("Spawn Spheres", ImVec2(-1, 0)))
         {
             int n = countValues[selectedCount];
-            scene.spheres.reserve(scene.spheres.size() + n); // pre-allocate to avoid reallocations
-
+            scene.spheres.reserve(scene.spheres.size() + n);
             for (int i = 0; i < n; i++)
             {
-                // Place each sphere at a random position within the spawn AABB
                 scene.spheres.push_back(Sphere{
                     float3(
                         spawnMin.x + RandomFloat() * (spawnMax.x - spawnMin.x),
@@ -627,11 +625,10 @@ void Renderer::UI()
                         spawnMin.z + RandomFloat() * (spawnMax.z - spawnMin.z)
                     ),
                     spawnRadius,
-                    MAT_GREEN
+                    MAT_MIRROR
                     });
             }
-
-            rebuildSphereBVH = true; // flag BVH for rebuild at the end of this frame
+            scene.BuildSphereBVH();
             ResetAccumulator();
         }
 

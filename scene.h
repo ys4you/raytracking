@@ -20,6 +20,7 @@
 #include "VoxelInstance.h"
 #include "VoxelObject.h"
 
+//numbers after 0 are not neccesary
 enum MaterialID : uint
 {
     MAT_NONE = 0,
