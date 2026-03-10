@@ -41,10 +41,6 @@
     <ClCompile Include="camera.cpp" />
     <ClCompile Include="ray.cpp" />
     <ClCompile Include="scene.cpp" />
-    <ClCompile Include="template\Core\Lighting\PointLight.cpp" />
-    <ClCompile Include="template\Core\Lighting\DirectionalLight.cpp" />
-    <ClCompile Include="template\Core\Lighting\SpotLight.cpp" />
-    <ClCompile Include="template\Core\Lighting\AreaLight.cpp" />
     <ClCompile Include="template\Core\Material.cpp" />
     <ClCompile Include="template\Sky.cpp" />
     <ClCompile Include="lib\VoxLoader.cpp" />
@@ -105,7 +101,6 @@
     <ClInclude Include="camera.h" />
     <ClInclude Include="scene.h" />
     <ClInclude Include="template\Core\ShadingPoint.h" />
-    <ClInclude Include="template\Core\Lighting\Light.h" />
     <ClInclude Include="template\Core\Lighting\PointLight.h" />
     <ClInclude Include="template\Core\Lighting\DirectionalLight.h" />
     <ClInclude Include="template\Core\Lighting\SpotLight.h" />

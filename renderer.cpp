@@ -1,6 +1,5 @@
 #include "template.h"
 #include "Core/ShadingPoint.h"
-#include "Core/Lighting/Light.h"
 #include "Core/Lighting/PointLight.h"
 #include "Core/Lighting/DirectionalLight.h"
 #include "Core/Lighting/SpotLight.h"
@@ -21,7 +20,7 @@
 // -----------------------------------------------------------
 float3 Renderer::Trace(Ray& ray, int depth, int, int)
 {
-	constexpr int MAX_DEPTH = 5; // maximum number of recursive ray bounces
+    constexpr int MAX_DEPTH = 5; // maximum number of recursive ray bounces
 
     // Abort recursion once the bounce limit is reached
     if (depth >= MAX_DEPTH) return float3(0, 0, 0);
@@ -64,13 +63,25 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
     {
     case MaterialType::Lambertian:
     {
-        float3 color(0);
+        float3 color = 0;
 
-        // Accumulate contribution from every enabled light
-        for (Light* light : lights)
-            if (light->enabled)
-                color += light->Illuminate(sp, scene) * mat.albedo;
+        for (const PointLight& l : lights.points)
+            if (l.enabled)
+                color += IlluminatePoint(l, sp, scene);
 
+        for (const DirectionalLight& l : lights.directionals)
+            if (l.enabled)
+                color += IlluminateDirectional(l, sp, scene);
+
+        for (const SpotLight& l : lights.spots)
+            if (l.enabled)
+                color += IlluminateSpot(l, sp, scene);
+
+        for (const AreaLight& l : lights.areas)
+            if (l.enabled)
+                color += IlluminateArea(l, sp, scene);
+
+        color *= mat.albedo;
         return color;
     }
 
@@ -180,28 +191,40 @@ void Renderer::Init()
     // Construct lights
     // -------------------------
 
+    // Sky-owned directional lights (sun & moon) — copied in; synced each frame in Tick()
+    lights.directionals.push_back(sky.sun);
+    lights.directionals.push_back(sky.moon);
+
     // Point light (disabled by default — toggle in ImGui)
-    pointLight = new PointLight({ 1,1,1 }, { 1,1,1 });
-    pointLight->enabled = false;
+    {
+        PointLight pl{ { 1,1,1 }, { 1,1,1 }, false };
+        lights.points.push_back(pl);
+    }
 
     // The directional light, spotlight, and area light are left commented out
-    // below as reference.  Active lights are assembled into the lights list.
+    // below as reference.  Uncomment and push into the appropriate vector.
 
-    //dirLight = new DirectionalLight({ 0.5f, -0.7f,0.45f }, { 1,1,1 });
-    //dirLight->enabled = true;
+    //{
+    //    DirectionalLight dl({ 0.5f, -0.7f, 0.45f }, { 1,1,1 });
+    //    dl.enabled = true;
+    //    lights.directionals.push_back(dl);
+    //}
 
-    //spotLight = new SpotLight({ 1.5f,1.5f,1.4f }, { -0.57f,-0.58f,-0.5f }, { 1,1,0.8f }, 10.f);
-    //spotLight->enabled = true;
+    //{
+    //    SpotLight sl({ 1.5f,1.5f,1.4f }, { -0.57f,-0.58f,-0.5f }, { 1,1,0.8f }, 10.f);
+    //    sl.enabled = true;
+    //    lights.spots.push_back(sl);
+    //}
 
-    //float3 center = float3(0, 5, 0);
-    //float3 edge1 = float3(4, 0, 0);   // width
-    //float3 edge2 = float3(0, 0, 2);   // height
-    //float3 corner = center - edge1 * 0.5f - edge2 * 0.5f;
-    //areaLight = new AreaLight(corner, edge1, edge2, float3(10.0f, 10.0f, 10.0f), 16, 16);
-    //areaLight->enabled = false;
-
-    // Active light list: sky sun and moon are owned by the sky system
-    lights = { &sky.sun, &sky.moon, pointLight };
+    //{
+    //    float3 center = float3(0, 5, 0);
+    //    float3 edge1 = float3(4, 0, 0);
+    //    float3 edge2 = float3(0, 0, 2);
+    //    float3 corner = center - edge1 * 0.5f - edge2 * 0.5f;
+    //    AreaLight al(corner, edge1, edge2, float3(10.0f, 10.0f, 10.0f), 16, 16);
+    //    al.enabled = false;
+    //    lights.areas.push_back(al);
+    //}
 
     // -------------------------
     // Allocate and zero the frame buffers
@@ -232,6 +255,18 @@ void Renderer::Tick(float deltaTime)
     auto startTime = std::chrono::high_resolution_clock::now();
     sampleCount++;
     int totalRaysThisFrame = 0;
+
+    // Advance the sky simulation (sun/moon position, sky colours, etc.)
+    // Must run before the pixel loop so that skyCache is populated on the first frame.
+    sky.Update(deltaTime);
+
+    // Sync sky-owned lights back into the lights struct so Trace() sees updated values.
+    // Convention: directionals[0] = sun, directionals[1] = moon (pushed in Init).
+    if (lights.directionals.size() >= 2)
+    {
+        lights.directionals[0] = sky.sun;
+        lights.directionals[1] = sky.moon;
+    }
 
     // Detect camera movement once before the pixel loop (not per-pixel)
     bool cameraMoving = length(camera.camPos - prevCamera.camPos) > 1e-4f ||
@@ -335,9 +370,6 @@ void Renderer::Tick(float deltaTime)
 
     // Save the current camera state so it can be used as prevCamera next frame
     prevCamera = camera;
-
-    // Advance the sky simulation (sun/moon position, sky colours, etc.)
-    sky.Update(deltaTime);
 
     // Process keyboard / mouse input and update the camera transform
     camera.HandleInput(deltaTime);
@@ -470,62 +502,126 @@ void Renderer::UI()
         bool lightsChanged = false;
         int  index = 0;
 
-        for (Light* light : lights)
+        // --- Point Lights ---
+        for (size_t i = 0; i < lights.points.size(); i++)
         {
+            PointLight& pl = lights.points[i];
             ImGui::PushID(index++);
 
-            // Draw a collapsing header; open by default if the light is enabled
             bool open = ImGui::CollapsingHeader("##lightHeader",
-                light->enabled ? ImGuiTreeNodeFlags_DefaultOpen : 0);
+                pl.enabled ? ImGuiTreeNodeFlags_DefaultOpen : 0);
 
-            // Enable / disable checkbox aligned to the right of the header
             ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - 24);
-            if (ImGui::Checkbox("##enabled", &light->enabled))
+            if (ImGui::Checkbox("##enabled", &pl.enabled))
                 lightsChanged = true;
 
             ImGui::SameLine(30);
-            ImGui::TextUnformatted(LightTypeName(light)); // display the light type name
+            ImGui::TextUnformatted("Point Light");
 
             if (open)
             {
                 ImGui::Indent();
-                ImGui::BeginDisabled(!light->enabled); // grey-out controls if disabled
-                bool lightChangedThis = false;
+                ImGui::BeginDisabled(!pl.enabled);
+                lightsChanged |= ImGui::DragFloat3("Position", &pl.position.x, 0.1f);
+                lightsChanged |= ImGui::ColorEdit3("Color", &pl.color.x);
+                ImGui::EndDisabled();
+                ImGui::Unindent();
+            }
 
-                // Per-type property editors (dynamic dispatch via downcasting)
-                if (auto* pl = dynamic_cast<PointLight*>(light))
-                {
-                    lightChangedThis |= ImGui::DragFloat3("Position", &pl->position.x, 0.1f);
-                    lightChangedThis |= ImGui::ColorEdit3("Color", &pl->color.x);
-                }
-                else if (auto* dl = dynamic_cast<DirectionalLight*>(light))
-                {
-                    lightChangedThis |= ImGui::DragFloat3("Direction", &dl->direction.x, 0.01f);
-                    if (lightChangedThis) dl->direction = normalize(dl->direction); // keep unit length
-                    lightChangedThis |= ImGui::ColorEdit3("Color", &dl->color.x);
-                }
-                else if (auto* sl = dynamic_cast<SpotLight*>(light))
-                {
-                    lightChangedThis |= ImGui::DragFloat3("Position", &sl->position.x, 0.1f);
-                    lightChangedThis |= ImGui::DragFloat3("Direction", &sl->direction.x, 0.01f);
-                    if (lightChangedThis) sl->direction = normalize(sl->direction); // keep unit length
-                    lightChangedThis |= ImGui::ColorEdit3("Color", &sl->color.x);
-                    lightChangedThis |= ImGui::DragFloat("Range", &sl->range, 0.1f, 0.1f, 100.0f);
-                    lightChangedThis |= ImGui::DragFloat("Angle", &sl->spotAngleDeg, 0.1f, 0.1f, 90.0f);
-                    lightChangedThis |= ImGui::SliderFloat("Edge Softness", &sl->edgeRoughness, 0.0f, 1.0f);
-                }
-                else if (auto* al = dynamic_cast<AreaLight*>(light))
-                {
-                    lightChangedThis |= ImGui::ColorEdit3("Color", &al->color.x);
-                    lightChangedThis |= ImGui::DragFloat("Intensity", &al->intensity, 0.1f, 0.0f, 1000.0f,
-                        "%.1f", ImGuiSliderFlags_Logarithmic);
-                    lightChangedThis |= ImGui::DragFloat3("Corner", &al->corner.x, 0.1f);
-                    lightChangedThis |= ImGui::DragFloat3("Edge 1", &al->edge1.x, 0.1f);
-                    lightChangedThis |= ImGui::DragFloat3("Edge 2", &al->edge2.x, 0.1f);
-                }
+            ImGui::PopID();
+        }
 
-                if (lightChangedThis) lightsChanged = true;
+        // --- Directional Lights ---
+        for (size_t i = 0; i < lights.directionals.size(); i++)
+        {
+            DirectionalLight& dl = lights.directionals[i];
+            ImGui::PushID(index++);
 
+            bool open = ImGui::CollapsingHeader("##lightHeader",
+                dl.enabled ? ImGuiTreeNodeFlags_DefaultOpen : 0);
+
+            ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - 24);
+            if (ImGui::Checkbox("##enabled", &dl.enabled))
+                lightsChanged = true;
+
+            ImGui::SameLine(30);
+            ImGui::TextUnformatted("Directional Light");
+
+            if (open)
+            {
+                ImGui::Indent();
+                ImGui::BeginDisabled(!dl.enabled);
+                bool dirChanged = ImGui::DragFloat3("Direction", &dl.direction.x, 0.01f);
+                if (dirChanged) dl.direction = normalize(dl.direction);
+                lightsChanged |= dirChanged;
+                lightsChanged |= ImGui::ColorEdit3("Color", &dl.color.x);
+                ImGui::EndDisabled();
+                ImGui::Unindent();
+            }
+
+            ImGui::PopID();
+        }
+
+        // --- Spot Lights ---
+        for (size_t i = 0; i < lights.spots.size(); i++)
+        {
+            SpotLight& sl = lights.spots[i];
+            ImGui::PushID(index++);
+
+            bool open = ImGui::CollapsingHeader("##lightHeader",
+                sl.enabled ? ImGuiTreeNodeFlags_DefaultOpen : 0);
+
+            ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - 24);
+            if (ImGui::Checkbox("##enabled", &sl.enabled))
+                lightsChanged = true;
+
+            ImGui::SameLine(30);
+            ImGui::TextUnformatted("Spot Light");
+
+            if (open)
+            {
+                ImGui::Indent();
+                ImGui::BeginDisabled(!sl.enabled);
+                bool slChanged = false;
+                slChanged |= ImGui::DragFloat3("Position", &sl.position.x, 0.1f);
+                slChanged |= ImGui::DragFloat3("Direction", &sl.direction.x, 0.01f);
+                if (slChanged) sl.direction = normalize(sl.direction);
+                slChanged |= ImGui::ColorEdit3("Color", &sl.color.x);
+                slChanged |= ImGui::DragFloat("Range", &sl.range, 0.1f, 0.1f, 100.0f);
+                slChanged |= ImGui::DragFloat("Angle", &sl.spotAngleDeg, 0.1f, 0.1f, 90.0f);
+                slChanged |= ImGui::SliderFloat("Edge Softness", &sl.edgeRoughness, 0.0f, 1.0f);
+                lightsChanged |= slChanged;
+                ImGui::EndDisabled();
+                ImGui::Unindent();
+            }
+
+            ImGui::PopID();
+        }
+
+        // --- Area Lights ---
+        for (size_t i = 0; i < lights.areas.size(); i++)
+        {
+            AreaLight& al = lights.areas[i];
+            ImGui::PushID(index++);
+
+            bool open = ImGui::CollapsingHeader("##lightHeader",
+                al.enabled ? ImGuiTreeNodeFlags_DefaultOpen : 0);
+
+            ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - 24);
+            if (ImGui::Checkbox("##enabled", &al.enabled))
+                lightsChanged = true;
+
+            ImGui::SameLine(30);
+            ImGui::TextUnformatted("Area Light");
+
+            if (open)
+            {
+                ImGui::Indent();
+                ImGui::BeginDisabled(!al.enabled);
+                lightsChanged |= ImGui::ColorEdit3("Color", &al.color.x);
+                lightsChanged |= ImGui::DragFloat3("Corner", &al.corner.x, 0.1f);
+                lightsChanged |= ImGui::DragFloat3("Edge 1", &al.edge1.x, 0.1f);
+                lightsChanged |= ImGui::DragFloat3("Edge 2", &al.edge2.x, 0.1f);
                 ImGui::EndDisabled();
                 ImGui::Unindent();
             }
@@ -639,14 +735,6 @@ void Renderer::UI()
             scene.BuildSphereBVH(); // rebuild immediately so the BVH is not stale
             ResetAccumulator();
         }
-
-        // Note: the second "Clear Spheres" button below is a duplicate from the original code.
-        ImGui::SameLine();
-        if (ImGui::Button("Clear Spheres", ImVec2(-1, 0)))
-        {
-            scene.spheres.clear();
-            ResetAccumulator();
-        }
     }
 
     ImGui::End();
@@ -726,18 +814,6 @@ void Tmpl8::Renderer::ResetAccumulator()
     memset(accumulator, 0, SCRWIDTH * SCRHEIGHT * sizeof(float3));
     memset(sampleCountPerPixel, 0, SCRWIDTH * SCRHEIGHT * sizeof(int));
     sampleCount = 0;
-}
-
-/// @brief  Returns a human-readable name for the given light's dynamic type.
-/// @param  light  Pointer to any Light subclass.
-/// @return Null-terminated string literal with the type name, or "Unknown Light".
-const char* Renderer::LightTypeName(Light* light)
-{
-    if (dynamic_cast<PointLight*>(light))       return "Point Light";
-    if (dynamic_cast<DirectionalLight*>(light)) return "Directional Light";
-    if (dynamic_cast<SpotLight*>(light))        return "Spot Light";
-    if (dynamic_cast<AreaLight*>(light))        return "Area Light";
-    return "Unknown Light";
 }
 
 /// @brief  Handles mouse button events for material selection.

@@ -129,8 +129,6 @@
     <ClCompile Include="stb_image_impl.cpp" />
     <ClCompile Include="lib\VoxLoader.cpp" />
     <ClCompile Include="Sphere.cpp" />
-    <ClCompile Include="template\Core\Lighting\AreaLight.cpp" />
-    <ClCompile Include="template\Core\Lighting\DirectionalLight.cpp" />
     <ClCompile Include="lib\imgui\imgui.cpp" />
     <ClCompile Include="lib\imgui\imgui_demo.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
@@ -141,8 +139,6 @@
     <ClCompile Include="lib\imgui\imgui_impl_opengl3.cpp" />
     <ClCompile Include="lib\imgui\imgui_tables.cpp" />
     <ClCompile Include="lib\imgui\imgui_widgets.cpp" />
-    <ClCompile Include="template\Core\Lighting\PointLight.cpp" />
-    <ClCompile Include="template\Core\Lighting\SpotLight.cpp" />
     <ClCompile Include="template\Core\Material.cpp" />
     <ClCompile Include="template\opencl.cpp" />
     <ClCompile Include="template\opengl.cpp" />
@@ -176,7 +172,6 @@
     <ClInclude Include="lib\imgui\imstb_truetype.h" />
     <ClInclude Include="template\Core\Lighting\PointLight.h" />
     <ClInclude Include="template\common.h" />
-    <ClInclude Include="template\Core\Lighting\Light.h" />
     <ClInclude Include="template\Core\Lighting\SpotLight.h" />
     <ClInclude Include="template\Core\Material.h" />
     <ClInclude Include="template\Core\ShadingPoint.h" />

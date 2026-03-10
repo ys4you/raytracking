@@ -41,8 +41,8 @@ private:
     HDRCubemap hdrSky;
 
     // Sky direction cache
-    static const int SKY_W = 512;
-    static const int SKY_H = 256;
+    static constexpr int SKY_W = 1024;
+    static constexpr int SKY_H = 512;
     std::vector<float3> skyCache;
     bool skyCacheDirty = true;
 

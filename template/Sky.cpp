@@ -182,11 +182,30 @@ float3 Sky::GetSkyColor(const float3& dir) const
 {
     float phi = atan2f(dir.z, dir.x);
     float theta = acosf(clamp(dir.y, -1.0f, 1.0f));
+
     float u = (phi + PI) / (2.0f * PI);
     float v = theta / PI;
-    int x = (int)(u * SKY_W) % SKY_W;
-    int y = (int)(v * SKY_H) % SKY_H;
-    return skyCache[y * SKY_W + x];
+
+    // Continuous texel coordinates
+    float fx = u * SKY_W - 0.5f;
+    float fy = v * SKY_H - 0.5f;
+
+    int x0 = static_cast<int>(floorf(fx)) % SKY_W;
+    int y0 = clamp(static_cast<int>(floorf(fy)), 0, SKY_H - 1);
+    int x1 = (x0 + 1) % SKY_W;          // wrap horizontally
+    int y1 = min(y0 + 1, SKY_H - 1);    // clamp vertically
+
+    if (x0 < 0) x0 += SKY_W;
+
+    float s = fx - floorf(fx);
+    float t = fy - floorf(fy);
+
+    float3 a = skyCache[y0 * SKY_W + x0];
+    float3 b = skyCache[y0 * SKY_W + x1];
+    float3 c = skyCache[y1 * SKY_W + x0];
+    float3 d = skyCache[y1 * SKY_W + x1];
+
+    return lerp(lerp(a, b, s), lerp(c, d, s), t);
 }
 
 

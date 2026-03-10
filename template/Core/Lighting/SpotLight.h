@@ -1,23 +1,69 @@
 #pragma once
-#include "Light.h"
-class SpotLight :
-    public Light
+
+struct SpotLight
 {
-public:
     float3 position;
     float3 direction;
     float3 color;
 
-    float range;
+    float range = 10.0f;
+    float spotAngleDeg = 30.0f;
+    float edgeRoughness = 0.2f;
 
-    float spotAngleDeg = 10.f;   // full cone
-    float edgeRoughness = 0;  // 0 = hard, 1 = fully soft
+    bool enabled = true;
 
+    SpotLight() = default;
 
-    SpotLight(float3 pos, float3 dir, float3 col, float falloff);
-
-    float3 Illuminate(const ShadingPoint& sp, Scene& scene) const override;
-
+    SpotLight(float3 pos, float3 dir, float3 col, float r)
+        : position(pos),
+        direction(normalize(dir)),
+        color(col),
+        range(r)
+    {
+    }
 };
 
+constexpr float DEG2RAD = 3.14159265359f / 180.0f;
 
+inline float3 IlluminateSpot(
+    const SpotLight& light,
+    const ShadingPoint& sp,
+    Scene& scene)
+{
+    const float EPS = 0.05f;
+
+    float3 toPoint = sp.position - light.position;
+
+    float dist2 = dot(toPoint, toPoint);
+    float distance = sqrt(dist2);
+
+    if (distance > light.range)
+        return float3(0);
+
+    float3 L = toPoint / distance;
+
+    Ray shadowRay(sp.position + sp.normal * EPS, -L);
+
+    if (scene.IsOccluded(shadowRay))
+        return float3(0);
+
+    float attenuation = 1.0f - distance / light.range;
+
+    float outerAngle = light.spotAngleDeg;
+    float innerAngle = outerAngle * (1.0f - light.edgeRoughness);
+
+    float cosOuter = cosf(outerAngle * 0.5f * DEG2RAD);
+    float cosInner = cosf(innerAngle * 0.5f * DEG2RAD);
+
+    float spotFactor = dot(light.direction, L);
+
+    if (spotFactor < cosOuter)
+        return float3(0);
+
+    float spotIntensity =
+        clamp((spotFactor - cosOuter) / (cosInner - cosOuter), 0.0f, 1.0f);
+
+    float ndotl = max(0.0f, dot(sp.normal, -L));
+
+    return light.color * ndotl * attenuation * spotIntensity;
+}

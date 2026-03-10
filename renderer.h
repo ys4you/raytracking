@@ -1,13 +1,20 @@
 #pragma once
 #include "camera.h"
 #include "Sky.h"
+#include "Core/Lighting/AreaLight.h"
+#include "Core/Lighting/PointLight.h"
+#include "Core/Lighting/SpotLight.h"
 
-class Light;
-class PointLight;
-class DirectionalLight;
-class SpotLight;
-class AreaLight;
+
 class material;
+
+struct SceneLights
+{
+	std::vector<PointLight> points;
+	std::vector<DirectionalLight> directionals;
+	std::vector<SpotLight> spots;
+	std::vector<AreaLight> areas;
+};
 
 namespace Tmpl8
 {
@@ -104,11 +111,7 @@ public:
 
 
 	// Lights
-	std::vector<Light*> lights;
-	PointLight* pointLight = nullptr;
-	DirectionalLight* dirLight = nullptr;
-	SpotLight* spotLight = nullptr;
-	AreaLight* areaLight = nullptr;
+	SceneLights lights;
 
 	bool debugNormals = false;
 
@@ -127,8 +130,6 @@ public:
 	//Blue noise
 	static constexpr int BN_SIZE = 256;
 	uint8_t* blueNoise = nullptr;
-
-	static const char* LightTypeName(Light* light);
 
 	//sky
 	Sky sky;
