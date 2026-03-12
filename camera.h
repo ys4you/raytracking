@@ -4,7 +4,7 @@
 #define SCRWIDTH	800
 #define SCRHEIGHT	600
 //#define FULLSCREEN
-#define DOUBLESIZE
+//#define DOUBLESIZE
 
 
 typedef float4 Plane;

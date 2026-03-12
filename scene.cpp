@@ -20,43 +20,104 @@ const Sphere* Scene::g_spheres = nullptr;
 static void SphereAABB(uint32_t idx, tinybvh::bvhvec3& min, tinybvh::bvhvec3& max)
 {
     const Sphere& s = Scene::g_spheres[idx];
-    // Expand center by radius in all directions to get the tight AABB
     min = { s.center.x - s.radius, s.center.y - s.radius, s.center.z - s.radius };
     max = { s.center.x + s.radius, s.center.y + s.radius, s.center.z + s.radius };
 }
 
 // -----------------------------------------------------------
-/// @brief  tinybvh intersection callback: tests a ray against sphere[idx]
-///         and updates ray.hit if a closer intersection is found.
+/// @brief  Sphere intersection test — private Scene method so it can
+///         read this->spheres directly, avoiding the g_spheres static.
+///         Force-inlined so the compiler folds it into TraceSphereBVH's
+///         leaf loop, eliminating any function-pointer indirection.
 ///
-/// @return True if the ray hits the sphere at a positive t closer than
-///         the current ray.hit.t.
+/// @param ray  tinybvh ray; ray.hit.t is updated on a closer hit.
+/// @param idx  Index into this->spheres[].
 // -----------------------------------------------------------
-static bool SphereIntersect(tinybvh::Ray& ray, uint32_t idx)
+__forceinline void Scene::IntersectSphereInlined(tinybvh::Ray& ray, uint32_t idx) const
 {
-    const Sphere& s = Scene::g_spheres[idx];
+    const Sphere& s = spheres[idx];   // direct member access — no static pointer
 
-    float ocx = ray.O.x - s.center.x;
-    float ocy = ray.O.y - s.center.y;
-    float ocz = ray.O.z - s.center.z;
+    const float ocx = ray.O.x - s.center.x;
+    const float ocy = ray.O.y - s.center.y;
+    const float ocz = ray.O.z - s.center.z;
 
-    float b = ocx * ray.D.x + ocy * ray.D.y + ocz * ray.D.z;
-    float oc2 = ocx * ocx + ocy * ocy + ocz * ocz;
-    float disc = b * b - (oc2 - s.radius * s.radius);
+    const float b = ocx * ray.D.x + ocy * ray.D.y + ocz * ray.D.z;
+    const float oc2 = ocx * ocx + ocy * ocy + ocz * ocz;
+    const float disc = b * b - (oc2 - s.radius * s.radius);
 
-    if (disc <= 0) return false;
+    if (disc <= 0.f) return;
 
-    float sqrtDisc = sqrtf(disc);
+    const float sqrtDisc = sqrtf(disc);
     float t = -b - sqrtDisc;
-    if (t <= 0) t = -b + sqrtDisc;
+    if (t <= 0.f) t = -b + sqrtDisc;
 
-    if (t > 0 && t < ray.hit.t)
+    if (t > 0.f && t < ray.hit.t)
     {
         ray.hit.t = t;
         ray.hit.prim = idx;
-        return true;
     }
-    return false;
+}
+
+// -----------------------------------------------------------
+/// @brief  Custom BVH traversal — private Scene method.
+///
+/// Calls IntersectSphereInlined directly at every leaf, eliminating
+/// the customIntersect function-pointer call that tinybvh::BVH::Intersect
+/// would otherwise use.  Standard ordered stack descent: nearer child first.
+///
+/// @param ray  tinybvh ray; result written into ray.hit.
+// -----------------------------------------------------------
+void Scene::TraceSphereBVH(tinybvh::Ray& ray) const
+{
+    using Node = tinybvh::BVH::BVHNode;
+
+    const Node* node = &sphereBVH.bvhNode[0];
+    const Node* stack[64];
+    uint32_t    stackPtr = 0;
+
+    while (true)
+    {
+        if (node->isLeaf())
+        {
+            // IntersectSphereInlined is __forceinline — the compiler folds
+            // the full intersection math directly into this loop body.
+            // primIdx is the correct array name in tinybvh (not triIdx).
+            for (uint32_t i = 0; i < node->triCount; ++i)
+                IntersectSphereInlined(ray, sphereBVH.primIdx[node->leftFirst + i]);
+
+            if (stackPtr == 0) break;
+            node = stack[--stackPtr];
+            continue;
+        }
+
+        const Node* child1 = &sphereBVH.bvhNode[node->leftFirst];
+        const Node* child2 = &sphereBVH.bvhNode[node->leftFirst + 1];
+
+        // BVHNode::Intersect(bvhvec3, bvhvec3) is an AABB-vs-AABB overlap test,
+        // not a ray test.  Use tinybvh_intersect_aabb() which takes a Ray and
+        // returns the entry distance (BVH_FAR on miss).
+        float dist1 = tinybvh::tinybvh_intersect_aabb(ray, child1->aabbMin, child1->aabbMax);
+        float dist2 = tinybvh::tinybvh_intersect_aabb(ray, child2->aabbMin, child2->aabbMax);
+
+        // Visit the nearer child first.
+        if (dist1 > dist2)
+        {
+            tinybvh::tinybvh_swap(dist1, dist2);
+            tinybvh::tinybvh_swap(child1, child2);
+        }
+
+        if (dist1 == BVH_FAR)
+        {
+            if (stackPtr == 0) break;
+            node = stack[--stackPtr];
+        }
+        else
+        {
+            node = child1;
+            if (dist2 != BVH_FAR)
+                stack[stackPtr++] = child2;
+        }
+    }
 }
 
 // -----------------------------------------------------------
@@ -65,42 +126,34 @@ static bool SphereIntersect(tinybvh::Ray& ray, uint32_t idx)
 
 /// @brief  Intersects a ray with the unit cube [0,1]³ using the slab method.
 ///
-/// Also records which axis (0=X, 1=Y, 2=Z) produced the entry plane so
-/// the DDA can determine the hit normal.
+/// Records which axis produced the entry plane so the DDA can
+/// determine the hit normal.
 ///
 /// @return tmin (entry distance) if the ray hits, or 1e34f on a miss.
-inline float intersect_cube(Ray& ray)
+__forceinline static float intersect_cube(Ray& ray)
 {
-    // X slabs
-    const float tx1 = -ray.O.x * ray.rD.x, tx2 = (1 - ray.O.x) * ray.rD.x;
-    float ty, tz;
-    float tmin = min(tx1, tx2), tmax = max(tx1, tx2);
+    const float tx1 = -ray.O.x * ray.rD.x, tx2 = (1.f - ray.O.x) * ray.rD.x;
+    const float ty1 = -ray.O.y * ray.rD.y, ty2 = (1.f - ray.O.y) * ray.rD.y;
+    const float tz1 = -ray.O.z * ray.rD.z, tz2 = (1.f - ray.O.z) * ray.rD.z;
 
-    // Y slabs
-    const float ty1 = -ray.O.y * ray.rD.y, ty2 = (1 - ray.O.y) * ray.rD.y;
-    ty = min(ty1, ty2);
-    tmin = max(tmin, ty);
-    tmax = min(tmax, max(ty1, ty2));
+    const float ty = min(ty1, ty2);
+    const float tz = min(tz1, tz2);
+    float tmin = max(max(min(tx1, tx2), ty), tz);
+    float tmax = min(min(max(tx1, tx2), max(ty1, ty2)), max(tz1, tz2));
 
-    // Z slabs
-    const float tz1 = -ray.O.z * ray.rD.z, tz2 = (1 - ray.O.z) * ray.rD.z;
-    tz = min(tz1, tz2);
-    tmin = max(tmin, tz);
-    tmax = min(tmax, max(tz1, tz2));
-
-    // Record which axis was the last to be entered (determines face normal)
+    // Record which axis the ray entered last — used as the face normal.
     if (tmin == tz) ray.axis = 2;
     else if (tmin == ty) ray.axis = 1;
-    // (else axis = 0, the default)
+    // else axis = 0 (default X)
 
     return tmax >= tmin ? tmin : 1e34f;
 }
 
-/// @brief  Returns true if pos lies strictly inside the unit cube [0,1]³.
-inline bool point_in_cube(const float3& pos)
+/// @brief  Returns true if pos lies inside the unit cube [0,1]³.
+__forceinline static bool point_in_cube(const float3& pos)
 {
-    return pos.x >= 0 && pos.y >= 0 && pos.z >= 0 &&
-        pos.x <= 1 && pos.y <= 1 && pos.z <= 1;
+    return pos.x >= 0.f && pos.y >= 0.f && pos.z >= 0.f
+        && pos.x <= 1.f && pos.y <= 1.f && pos.z <= 1.f;
 }
 
 // -----------------------------------------------------------
@@ -109,106 +162,68 @@ inline bool point_in_cube(const float3& pos)
 
 /// @brief  Returns the voxel value at world-grid position (x, y, z).
 ///
-/// The two-level structure works as follows:
-///   - The coarse grid stores one cell per BRICK_SIZE³ brick.
-///   - If a coarse cell is 0, the entire brick is empty.
-///   - If the lowest bit is 0, the brick is a solid colour (value >> 1).
-///   - If the lowest bit is 1, the cell is a brick index (index >> 1).
+/// Two-level structure:
+///   - coarseGrid cell == 0          → entire brick is empty.
+///   - (cell & 1) == 0               → solid-colour brick; value = cell >> 1.
+///   - (cell & 1) == 1               → brick pointer;      index = cell >> 1.
 uint Scene::GetVoxel(uint x, uint y, uint z) const
 {
-    // Coarse-grid coordinates
-    uint gx = x / BRICK_SIZE;
-    uint gy = y / BRICK_SIZE;
-    uint gz = z / BRICK_SIZE;
+    const uint gidx = (x / BRICK_SIZE)
+        + (y / BRICK_SIZE) * COARSE_SIZE
+        + (z / BRICK_SIZE) * COARSE_SIZE2;
+    const uint cell = coarseGrid[gidx];
 
-    uint gidx = gx + gy * COARSE_SIZE + gz * COARSE_SIZE2;
-    uint cell = coarseGrid[gidx];
+    if (cell == 0)        return 0;           // empty brick — early out
+    if ((cell & 1) == 0)  return cell >> 1;   // solid-colour brick
 
-    if (cell == 0) return 0; // entire brick is empty — early out
-
-    if ((cell & 1) == 0)
-        return cell >> 1; // solid-colour brick: return the stored colour
-
-    // Fine-grid lookup inside the brick
-    uint lx = x & (BRICK_SIZE - 1);
-    uint ly = y & (BRICK_SIZE - 1);
-    uint lz = z & (BRICK_SIZE - 1);
+    const uint lx = x & (BRICK_SIZE - 1);
+    const uint ly = y & (BRICK_SIZE - 1);
+    const uint lz = z & (BRICK_SIZE - 1);
 
     return bricks[cell >> 1][lx + ly * BRICK_SIZE + lz * BRICK_SIZE2];
 }
 
 /// @brief  Allocates a new zeroed brick and appends it to the brick list.
-/// @return Index of the newly allocated brick.
 uint Scene::AllocateBrick()
 {
-    uint8_t* b = (uint8_t*)MALLOC64(BRICK_SIZE3); // 64-byte aligned for SIMD access
+    uint8_t* b = (uint8_t*)MALLOC64(BRICK_SIZE3);
     memset(b, 0, BRICK_SIZE3);
     bricks.push_back(b);
     return (uint)bricks.size() - 1;
 }
 
 // -----------------------------------------------------------
-/// @brief  Scene constructor.  Initialises the brick grid, predefined
-///         materials, loads the street.vox asset, and builds the sphere BVH.
+// Scene constructor
 // -----------------------------------------------------------
 Scene::Scene()
 {
-    // Allocate and zero the coarse grid
     coarseGrid = (uint*)MALLOC64(COARSE_SIZE3 * sizeof(uint));
     memset(coarseGrid, 0, COARSE_SIZE3 * sizeof(uint));
     bricks.clear();
 
-    // Initialise all material slots to defaults
     materials.fill(Material{});
 
-    // --- Predefined named materials --
-
-    // Polished mirror: near-perfect metal with very low roughness
     materials[MAT_MIRROR].type = MaterialType::Metal;
     materials[MAT_MIRROR].albedo = { 0.9f, 0.9f, 0.95f };
     materials[MAT_MIRROR].roughness = 0.05f;
     materials[MAT_MIRROR].metallic = 1.0f;
 
-    // Glass: dielectric with IOR 1.5 (typical window glass)
     materials[MAT_DIELECTRIC].type = MaterialType::Dielectric;
-    materials[MAT_DIELECTRIC].albedo = { 1, 1, 1 };
+    materials[MAT_DIELECTRIC].albedo = { 1.f, 1.f, 1.f };
     materials[MAT_DIELECTRIC].ior = 1.5f;
 
-    // Simple green Lambertian (used as a default for spawned spheres)
     materials[MAT_GREEN].type = MaterialType::Lambertian;
-    materials[MAT_GREEN].albedo = { 0, 1, 0 };
+    materials[MAT_GREEN].albedo = { 0.f, 1.f, 0.f };
     materials[MAT_GREEN].roughness = 1.0f;
 
-    // Load the main voxel scene from disk
     VoxLoader::Load("assets/street.vox", *this);
 
-    // --- Random instance generator (for testing VoxelFactory) ---
-    std::random_device rd;
-    std::mt19937 gen(rd());
-
-    std::uniform_real_distribution<float> posX(0.0f, 256.0f);
-    std::uniform_real_distribution<float> posY(0.0f, 256.0f);
-    std::uniform_real_distribution<float> posZ(0.0f, 256.0f);
-    std::uniform_real_distribution<float> rot(0.0f, 2 * PI);
-    std::uniform_real_distribution<float> scale(0.1f, 1.0f);
-
-    //// Generate 4 random instances (FlattenInstance is commented out for now)
-    //for (int i = 0; i < 1; ++i)
-    //{
-    //    float3 position = { posX(gen), posY(gen), posZ(gen) };
-    //    float3 rotation = { rot(gen),  rot(gen),  rot(gen) };
-    //    float3 scaleVec = { scale(gen),scale(gen),scale(gen) };
-
-    //    VoxelFactory::FlattenInstance(*this, 0, position, rotation, scaleVec);
-    //}
-
-    static float3 spawnMin = { 0.1f, 0.1f, 0.1f }; // minimum world-space corner
-    static float3 spawnMax = { 0.9f, 0.9f, 0.9f }; // maximum world-space corner
+    static float3 spawnMin = { 0.1f, 0.1f, 0.1f };
+    static float3 spawnMax = { 0.9f, 0.9f, 0.9f };
     static float  spawnRadius = 0.01f;
 
-    for (int i = 0; i < 1000; i++)
+    for (int i = 0; i < 1000; ++i)
     {
-        // Place each sphere at a random position within the spawn AABB
         spheres.push_back(Sphere{
             float3(
                 spawnMin.x + RandomFloat() * (spawnMax.x - spawnMin.x),
@@ -220,75 +235,50 @@ Scene::Scene()
             });
     }
 
-	//VoxelFactory::FlattenInstance(
-	//    *this,
-	//    0,
-	//    {128, 128, 128},   // shift to be fully positive inside WORLDSIZE
-	//    {0, 0, 0},
-	//    {1, 1, 1}          // keep scale 1
-	//);
-    // Build the sphere acceleration structure
     BuildSphereBVH();
 }
 
 // -----------------------------------------------------------
-/// @brief  Legacy voxel setter (used by old flat-grid code paths).
-///
-/// Allocates a brick for the coarse cell if one doesn't exist yet,
-/// then writes value v into the fine grid.
+// Voxel setters
 // -----------------------------------------------------------
+
 void Scene::Set(uint x, uint y, uint z, uint v)
 {
-    uint gx = x / BRICK_SIZE, gy = y / BRICK_SIZE, gz = z / BRICK_SIZE;
-    uint lx = x & (BRICK_SIZE - 1), ly = y & (BRICK_SIZE - 1), lz = z & (BRICK_SIZE - 1);
-    uint gidx = gx + gy * COARSE_SIZE + gz * COARSE_SIZE2;
-    uint cell = coarseGrid[gidx];
+    const uint gx = x / BRICK_SIZE, gy = y / BRICK_SIZE, gz = z / BRICK_SIZE;
+    const uint lx = x & (BRICK_SIZE - 1);
+    const uint ly = y & (BRICK_SIZE - 1);
+    const uint lz = z & (BRICK_SIZE - 1);
+    const uint gidx = gx + gy * COARSE_SIZE + gz * COARSE_SIZE2;
 
-    // Allocate a new brick if the coarse cell is empty
+    uint cell = coarseGrid[gidx];
     if (cell == 0)
     {
         uint brickIndex = AllocateBrick();
-        coarseGrid[gidx] = (brickIndex << 1) | 1; // tag bit 1 = brick pointer
+        coarseGrid[gidx] = (brickIndex << 1) | 1;
         cell = coarseGrid[gidx];
     }
 
-    uint brickIndex = cell >> 1;
-    bricks[brickIndex][lx + ly * BRICK_SIZE + lz * BRICK_SIZE * BRICK_SIZE] = (uint8_t)v;
+    bricks[cell >> 1][lx + ly * BRICK_SIZE + lz * BRICK_SIZE * BRICK_SIZE] = (uint8_t)v;
 }
 
-// -----------------------------------------------------------
-/// @brief  Writes a single voxel into the two-level brick grid.
-///
-/// Silently ignores out-of-bounds coordinates.  Allocates a new
-/// brick for the coarse cell if none exists yet.
-///
-/// @param x, y, z  World-grid coordinates in [0, WORLDSIZE).
-/// @param value    Voxel colour/material value (0 = empty).
-// -----------------------------------------------------------
 void Scene::SetVoxel(int x, int y, int z, uint value)
 {
-    // Bounds check — cast to uint so negative values fail the >= 0 check too
     if ((uint)x >= WORLDSIZE || (uint)y >= WORLDSIZE || (uint)z >= WORLDSIZE)
         return;
 
-    // Coarse-grid cell coordinates (right-shift by brick size)
     const uint cx = x >> BRICK_SHIFT;
     const uint cy = y >> BRICK_SHIFT;
     const uint cz = z >> BRICK_SHIFT;
     const uint coarseIdx = cx + cy * COARSE_SIZE + cz * COARSE_SIZE2;
 
     uint& cell = coarseGrid[coarseIdx];
-
-    // Allocate a brick if the coarse cell is still empty
     if (cell == 0)
     {
         uint newIndex = AllocateBrick();
-        cell = (newIndex << 1) | 1; // tag bit 1 = this is a brick index
+        cell = (newIndex << 1) | 1;
     }
 
-    uint8_t* brick = bricks[cell >> 1]; // dereference the brick index
-
-    // Local coordinates within the brick
+    uint8_t* brick = bricks[cell >> 1];
     const uint lx = x & (BRICK_SIZE - 1);
     const uint ly = y & (BRICK_SIZE - 1);
     const uint lz = z & (BRICK_SIZE - 1);
@@ -300,47 +290,35 @@ void Scene::SetVoxel(int x, int y, int z, uint value)
 // BVH
 // -----------------------------------------------------------
 
-/// @brief  (Re)builds the tinybvh custom-geometry BVH over all spheres.
-///
-/// Must be called after any sphere is added or removed.  Sets
-/// sphereBVHReady = false first so FindNearest falls back to the
-/// brute-force path during the rebuild.
 void Scene::BuildSphereBVH()
 {
     sphereBVHReady = false;
-    if (spheres.size() < 2) return; // BVH needs at least 2 primitives
+    if (spheres.size() < 2) return;
 
-    g_spheres = spheres.data(); // expose sphere array to the static callbacks
+    g_spheres = spheres.data();
     sphereBVH.Build(SphereAABB, (uint32_t)spheres.size());
-    sphereBVH.customIntersect = SphereIntersect;
+    // Note: we no longer set sphereBVH.customIntersect — TraceSphereBVH
+    // replaces the library's Intersect() call entirely.
     sphereBVHReady = true;
 }
 
-// -----------------------------------------------------------
-/// @brief  Standalone sphere intersection (legacy, used when the BVH
-///         is not ready or sphere count is below the BVH threshold).
-///
-/// @param ray   The ray to test.
-/// @param s     The sphere to test against.
-/// @param tHit  Output: distance to the nearest positive intersection.
-/// @return      True if the ray hits the sphere at a positive t.
-// -----------------------------------------------------------
-static bool IntersectSphere(const Ray& ray, const Sphere& s, float& tHit)
+// Legacy brute-force sphere test (fallback when BVH is not ready).
+__forceinline static bool IntersectSphere(const Ray& ray, const Sphere& s, float& tHit)
 {
-    float3 oc = ray.O - s.center;
-    float  a = dot(ray.D, ray.D);
-    float  b = 2.0f * dot(oc, ray.D);
-    float  c = dot(oc, oc) - s.radius * s.radius;
-    float disc = b * b - 4 * a * c;
+    const float3 oc = ray.O - s.center;
+    const float  a = dot(ray.D, ray.D);
+    const float  b = 2.f * dot(oc, ray.D);
+    const float  c = dot(oc, oc) - s.radius * s.radius;
+    const float  disc = b * b - 4.f * a * c;
 
-    if (disc < 0) return false; // ray misses the sphere
+    if (disc < 0.f) return false;
 
-    float sqrtDisc = sqrtf(disc);
-    float t0 = (-b - sqrtDisc) / (2 * a); // near root
-    float t1 = (-b + sqrtDisc) / (2 * a); // far root
-    float t = (t0 > 0) ? t0 : t1;        // prefer the nearer positive root
+    const float sqrtDisc = sqrtf(disc);
+    const float t0 = (-b - sqrtDisc) / (2.f * a);
+    const float t1 = (-b + sqrtDisc) / (2.f * a);
+    const float t = (t0 > 0.f) ? t0 : t1;
 
-    if (t <= 0) return false;
+    if (t <= 0.f) return false;
     tHit = t;
     return true;
 }
@@ -350,102 +328,188 @@ static bool IntersectSphere(const Ray& ray, const Sphere& s, float& tHit)
 // -----------------------------------------------------------
 
 /// @brief  Initialises the 3D DDA state for traversing the voxel grid.
-///
-/// If the ray origin is outside the unit cube, the ray is advanced to
-/// the entry point first.  The DDA step, tmax, and tdelta values are
-/// pre-computed so the traversal loop only needs comparisons and additions.
-bool Scene::Setup3DDDA(Ray& ray, DDAState& state) const
+///         Force-inlined because it is called from the hot TraverseDDA
+///         template and we want the compiler to constant-fold its outputs
+///         into the DDA loop registers.
+__forceinline bool Scene::Setup3DDDA(Ray& ray, DDAState& state) const
 {
-    state.t = 0;
+    state.t = 0.f;
     const bool startedInGrid = point_in_cube(ray.O);
 
     if (!startedInGrid)
     {
         state.t = intersect_cube(ray);
-        if (state.t > 1e33f) return false; // ray misses the world entirely
+        if (state.t > 1e33f) return false;
     }
 
-    static const float cellSize = 1.0f / WORLDSIZE;
+    static const float cellSize = 1.f / WORLDSIZE;
 
-    // Step direction: +1 or -1 per axis
     state.step = make_int3(
         1 - (int)ray.Dsign.x * 2,
         1 - (int)ray.Dsign.y * 2,
         1 - (int)ray.Dsign.z * 2
     );
 
-    // Entry position in grid space.
-    // The 0.00005f epsilon nudges the sample point just past the entry plane
-    // so it lands cleanly inside the first voxel rather than on its boundary.
     const float3 posInGrid = float3(
         (ray.O.x + (state.t + 0.00005f) * ray.D.x) * WORLDSIZE,
         (ray.O.y + (state.t + 0.00005f) * ray.D.y) * WORLDSIZE,
         (ray.O.z + (state.t + 0.00005f) * ray.D.z) * WORLDSIZE
     );
 
-    // Next grid plane the ray will cross on each axis
     const float3 gridPlanes = float3(
         (ceilf(posInGrid.x) - ray.Dsign.x) * cellSize,
         (ceilf(posInGrid.y) - ray.Dsign.y) * cellSize,
         (ceilf(posInGrid.z) - ray.Dsign.z) * cellSize
     );
 
-    // Starting voxel, clamped to valid range
     state.X = clamp((int)posInGrid.x, 0, WORLDSIZE - 1);
     state.Y = clamp((int)posInGrid.y, 0, WORLDSIZE - 1);
     state.Z = clamp((int)posInGrid.z, 0, WORLDSIZE - 1);
 
-    // Distance to travel along the ray to cross one voxel on each axis
     state.tdelta.x = cellSize * state.step.x / ray.D.x;
     state.tdelta.y = cellSize * state.step.y / ray.D.y;
     state.tdelta.z = cellSize * state.step.z / ray.D.z;
 
-    // t at which the ray first crosses the next plane on each axis.
-    // offsetO shifts the origin by EPSILON along the ray so the DDA never
-    // immediately re-hits the surface the ray just left — without mutating ray.O.
     const float3 offsetO = ray.O + EPSILON * ray.D;
     state.tmax.x = (gridPlanes.x - offsetO.x) / ray.D.x;
     state.tmax.y = (gridPlanes.y - offsetO.y) / ray.D.y;
     state.tmax.z = (gridPlanes.z - offsetO.z) / ray.D.z;
 
-    // Flag whether the ray starts inside a filled voxel
     const uint cell = GetVoxel(state.X, state.Y, state.Z);
-    ray.inside = cell != 0 && startedInGrid;
+    ray.inside = (cell != 0) && startedInGrid;
 
     return true;
 }
+
+// -----------------------------------------------------------
+// Templated DDA traversal
+// -----------------------------------------------------------
+//
+// TraverseDDA<false> = FindNearest:  record the closest voxel hit.
+// TraverseDDA<true>  = IsOccluded:  return true on any opaque hit
+//                                   before ray.t (shadow ray distance).
+//
+// The template parameter is resolved at compile time by if constexpr,
+// so each instantiation compiles to a branch-free, fully-optimised loop
+// with no dead code — no runtime overhead for the unused path.
+//
+// The function is force-inlined so that when FindNearest / IsOccluded
+// call it, the compiler can optimise across the call boundary and
+// allocate all DDA state in registers.
+
+template<bool IsOcclusionRay>
+__forceinline bool Scene::TraverseDDA(
+    Ray& ray,
+    float nearestSphereT,
+    uint& outMaterial,
+    int& outAxis) const
+{
+    DDAState s;
+    if (!Setup3DDDA(ray, s)) return false;
+
+    const bool startedInside = ray.inside;
+
+    while (true)
+    {
+        // --- Early exit: sphere already closer than current voxel t ---
+        // Only needed for FindNearest; IsOccluded has its own distance limit.
+        if constexpr (!IsOcclusionRay)
+        {
+            if (s.t >= nearestSphereT) break;
+        }
+
+        // --- IsOccluded distance limit: stop at the light ---
+        if constexpr (IsOcclusionRay)
+        {
+            if (s.t >= ray.t) return false;
+        }
+
+        const uint cell = GetVoxel(s.X, s.Y, s.Z);
+
+        // --- Hit test ---
+        if constexpr (IsOcclusionRay)
+        {
+            // Glass (Dielectric) does not cast shadows.
+            if (cell && GetMat(cell).type != MaterialType::Dielectric)
+                return true;
+        }
+        else
+        {
+            // For FindNearest the hit condition flips depending on whether
+            // the ray started inside a solid voxel:
+            //   - outside → hit when we enter a filled voxel
+            //   - inside  → hit when we leave into empty space
+            if ((startedInside && cell == 0) || (!startedInside && cell != 0))
+            {
+                if (startedInside)
+                {
+                    // Step back one voxel to find the surface we just left.
+                    const int hx = (int)s.X - s.step.x;
+                    const int hy = (int)s.Y - s.step.y;
+                    const int hz = (int)s.Z - s.step.z;
+
+                    if (hx >= 0 && hx < WORLDSIZE &&
+                        hy >= 0 && hy < WORLDSIZE &&
+                        hz >= 0 && hz < WORLDSIZE)
+                    {
+                        outMaterial = GetVoxel(hx, hy, hz);
+                        outAxis = s.axis;
+                    }
+                }
+                else
+                {
+                    outMaterial = cell;
+                    outAxis = s.axis;
+                }
+                ray.t = s.t;
+                return true;
+            }
+        }
+
+        // --- DDA step: advance to the next voxel boundary ---
+        if (s.tmax.x < s.tmax.y)
+        {
+            if (s.tmax.x < s.tmax.z) { s.t = s.tmax.x; s.X += s.step.x; s.tmax.x += s.tdelta.x; s.axis = 0; }
+            else { s.t = s.tmax.z; s.Z += s.step.z; s.tmax.z += s.tdelta.z; s.axis = 2; }
+        }
+        else
+        {
+            if (s.tmax.y < s.tmax.z) { s.t = s.tmax.y; s.Y += s.step.y; s.tmax.y += s.tdelta.y; s.axis = 1; }
+            else { s.t = s.tmax.z; s.Z += s.step.z; s.tmax.z += s.tdelta.z; s.axis = 2; }
+        }
+
+        // --- Bounds check ---
+        if (s.X >= (uint)WORLDSIZE || s.Y >= (uint)WORLDSIZE || s.Z >= (uint)WORLDSIZE)
+            break;
+    }
+
+    return false;
+}
+
 // -----------------------------------------------------------
 // FindNearest
 // -----------------------------------------------------------
 
-/// @brief  Finds the closest intersection of the ray with the scene
-///         (voxels + spheres) and writes the result into the ray.
-///
-/// Tests spheres first via BVH (or brute-force for small counts),
-/// then traverses the voxel grid with 3D DDA.  The closer of the two
-/// hits is recorded on the ray.
-///
-/// On miss: ray.voxel = 0, ray.sphereIndex = -1, ray.t = 1e34f.
 void Scene::FindNearest(Ray& ray) const
 {
-
-    // -------------------------
-    // Sphere intersection
-    // -------------------------
+    // ---- Sphere intersection ----
     float nearestSphereT = 1e34f;
     int   nearestSphereIdx = -1;
 
     if (spheres.size() >= 2 && sphereBVHReady)
     {
         const float3& D = ray.D;
-        const float lenSq = D.x * D.x + D.y * D.y + D.z * D.z;
+        const float   lenSq = D.x * D.x + D.y * D.y + D.z * D.z;
         if (lenSq > 1e-10f)
         {
             tinybvh::Ray bvhRay(
-                tinybvh::bvhvec3(ray.O.x, ray.O.y, ray.O.z),
-                tinybvh::bvhvec3(D.x, D.y, D.z)
+                { ray.O.x, ray.O.y, ray.O.z },
+                { D.x,     D.y,     D.z }
             );
-            sphereBVH.Intersect(bvhRay);
+
+            // Private method — IntersectSphereInlined is folded directly
+            // into the leaf loop, eliminating the customIntersect pointer call.
+            TraceSphereBVH(bvhRay);
 
             if (bvhRay.hit.t < 1e30f)
             {
@@ -456,8 +520,7 @@ void Scene::FindNearest(Ray& ray) const
     }
     else
     {
-        // Brute-force fallback for 0 or 1 spheres (BVH requires >= 2)
-        for (int i = 0; i < (int)spheres.size(); i++)
+        for (int i = 0; i < (int)spheres.size(); ++i)
         {
             float t;
             if (IntersectSphere(ray, spheres[i], t) && t < nearestSphereT)
@@ -468,102 +531,36 @@ void Scene::FindNearest(Ray& ray) const
         }
     }
 
-    // -------------------------
-    // Voxel DDA traversal
-    // -------------------------
-    DDAState s;
-    bool  hitVoxel = Setup3DDDA(ray, s);
+    // ---- Voxel DDA traversal ----
+    uint  hitMaterial = 0;
+    int   hitAxis = -1;
     float nearestVoxelT = 1e34f;
-    uint  hitVoxelMaterial = 0;
-    int   voxelHitAxis = -1;
 
-    if (hitVoxel)
-    {
-        bool startedInside = ray.inside;
-        uint cell = 0;
+    // Temporarily store ray.t so TraverseDDA<false> can write to it.
+    ray.t = 1e34f;
 
-        while (true)
-        {
-            // Sphere already hit closer than our current traversal distance:
-            // no need to march further through voxels.
-            if (s.t >= nearestSphereT) break;
+    const bool voxelHit = TraverseDDA<false>(ray, nearestSphereT, hitMaterial, hitAxis);
+    if (voxelHit) nearestVoxelT = ray.t;
 
-            cell = GetVoxel(s.X, s.Y, s.Z);
-
-            // Hit condition depends on whether we started inside or outside:
-            //   - outside: stop when we enter a filled voxel
-            //   - inside:  stop when we leave a filled voxel (enter empty space)
-            if ((startedInside && cell == 0) || (!startedInside && cell != 0))
-            {
-                nearestVoxelT = s.t;
-
-                if (startedInside)
-                {
-                    // The actual hit voxel is one step behind the current cell
-                    int hitX = s.X - s.step.x;
-                    int hitY = s.Y - s.step.y;
-                    int hitZ = s.Z - s.step.z;
-
-                    if (hitX >= 0 && hitX < WORLDSIZE &&
-                        hitY >= 0 && hitY < WORLDSIZE &&
-                        hitZ >= 0 && hitZ < WORLDSIZE)
-                    {
-                        hitVoxelMaterial = GetVoxel(hitX, hitY, hitZ);
-                        voxelHitAxis = s.axis;
-                    }
-                }
-                else
-                {
-                    hitVoxelMaterial = cell;
-                    voxelHitAxis = s.axis;
-                }
-                break;
-            }
-
-            // Advance to the next voxel boundary using the standard DDA step
-            if (s.tmax.x < s.tmax.y)
-            {
-                if (s.tmax.x < s.tmax.z) { s.t = s.tmax.x; s.X += s.step.x; s.tmax.x += s.tdelta.x; s.axis = 0; }
-                else { s.t = s.tmax.z; s.Z += s.step.z; s.tmax.z += s.tdelta.z; s.axis = 2; }
-            }
-            else
-            {
-                if (s.tmax.y < s.tmax.z) { s.t = s.tmax.y; s.Y += s.step.y; s.tmax.y += s.tdelta.y; s.axis = 1; }
-                else { s.t = s.tmax.z; s.Z += s.step.z; s.tmax.z += s.tdelta.z; s.axis = 2; }
-            }
-
-            // Exit loop if the ray has left the world bounds
-            if (s.X < 0 || s.X >= WORLDSIZE ||
-                s.Y < 0 || s.Y >= WORLDSIZE ||
-                s.Z < 0 || s.Z >= WORLDSIZE)
-                break;
-        }
-    }
-
-    // -------------------------
-    // Select the nearest hit
-    // -------------------------
+    // ---- Select the nearest hit ----
     if (nearestSphereIdx >= 0 && nearestSphereT < nearestVoxelT)
     {
-        // Sphere is closer
         ray.t = nearestSphereT;
         ray.materialIndex = spheres[nearestSphereIdx].material;
-        ray.axis = 3; // axis 3 = sphere hit (not a grid face)
+        ray.axis = 3; // axis 3 = sphere (not a voxel face)
         ray.sphereIndex = nearestSphereIdx;
         ray.voxel = 0;
     }
-    else if (nearestVoxelT < 1e34f)
+    else if (voxelHit)
     {
-        // Voxel is closer (or equal)
-        ray.t = nearestVoxelT;
-        ray.materialIndex = hitVoxelMaterial;
-        ray.axis = voxelHitAxis;
+        // ray.t already written by TraverseDDA<false>
+        ray.materialIndex = hitMaterial;
+        ray.axis = hitAxis;
         ray.sphereIndex = -1;
-        ray.voxel = hitVoxelMaterial;
+        ray.voxel = hitMaterial;
     }
     else
     {
-        // No hit — sky
         ray.t = 1e34f;
         ray.materialIndex = -1;
         ray.axis = -1;
@@ -576,40 +573,13 @@ void Scene::FindNearest(Ray& ray) const
 // IsOccluded
 // -----------------------------------------------------------
 
-/// @brief  Fast occlusion test: returns true if any voxel blocks the ray
-///         before it reaches its maximum distance (ray.t).
-///
-/// Does not test spheres.  Used for shadow rays where only a boolean
-/// result is needed — no distance or material information is returned.
-///
-/// @param ray  Shadow ray; ray.t must be set to the light distance.
-/// @return     True if the ray is blocked before reaching ray.t.
 bool Scene::IsOccluded(Ray& ray) const
 {
-
-    DDAState s;
-    if (!Setup3DDDA(ray, s)) return false; // ray misses the world
-
-    while (s.t < ray.t) // only traverse up to the light distance
-    {
-        const uint cell = GetVoxel(s.X, s.Y, s.Z);
-        if (cell && GetMat(cell).type != MaterialType::Dielectric)
-            return true;
-        // Advance to the next voxel boundary
-        if (s.tmax.x < s.tmax.y)
-        {
-            if (s.tmax.x < s.tmax.z) { s.t = s.tmax.x; s.X += s.step.x; s.tmax.x += s.tdelta.x; s.axis = 0; }
-            else { s.t = s.tmax.z; s.Z += s.step.z; s.tmax.z += s.tdelta.z; s.axis = 2; }
-        }
-        else
-        {
-            if (s.tmax.y < s.tmax.z) { s.t = s.tmax.y; s.Y += s.step.y; s.tmax.y += s.tdelta.y; s.axis = 1; }
-            else { s.t = s.tmax.z; s.Z += s.step.z; s.tmax.z += s.tdelta.z; s.axis = 2; }
-        }
-
-        // Exit if the ray has left the world bounds
-        if (s.X >= WORLDSIZE || s.Y >= WORLDSIZE || s.Z >= WORLDSIZE) break;
-    }
-
-    return false; // ray reached the light without being blocked
+    // TraverseDDA<true> reads ray.t as the maximum shadow ray distance
+    // and returns true immediately on the first opaque voxel hit.
+    // The dummy outMaterial / outAxis variables are optimised away by the
+    // compiler because the IsOcclusionRay branch never writes them.
+    uint dummyMat = 0;
+    int  dummyAxis = -1;
+    return TraverseDDA<true>(ray, 0.f, dummyMat, dummyAxis);
 }

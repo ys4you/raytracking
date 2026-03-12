@@ -248,7 +248,7 @@ void Renderer::Init()
     InitAccumulator();
 
     const float3 orbitCenter = float3(0.5f, 0.5f, 0.5f);
-    constexpr float radius = 3.0f;
+    constexpr float radius = .6f;
 
     cameraSpline.points =
     {
@@ -262,7 +262,7 @@ void Renderer::Init()
     cameraSpline.BuildArcLengthTable();
 
     cameraFollower.spline = &cameraSpline;
-    cameraFollower.speed = 1.5f;
+    cameraFollower.speed = .2f;
     cameraFollower.loop = true;
 }
 

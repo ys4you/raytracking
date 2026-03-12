@@ -20,7 +20,6 @@
 #include "VoxelInstance.h"
 #include "VoxelObject.h"
 
-//numbers after 0 are not neccesary
 enum MaterialID : uint
 {
     MAT_NONE = 0,
@@ -40,16 +39,17 @@ namespace Tmpl8
     public:
         struct DDAState
         {
-            int3 step;
-            uint X, Y, Z;
-            float t;
+            int3   step;
+            uint   X, Y, Z;
+            float  t;
             float3 tdelta;
             float3 tmax;
-            int axis;
+            int    axis;
         };
 
         uint GetVoxel(uint x, uint y, uint z) const;
         uint AllocateBrick();
+
         Scene();
 
         void FindNearest(Ray& ray) const;
@@ -58,15 +58,15 @@ namespace Tmpl8
         void SetVoxel(int x, int y, int z, uint materialIndex);
         void BuildSphereBVH();
 
-        uint* coarseGrid;
-        std::vector<uint8_t*> bricks;
-        std::array<Material, MAT_COUNT + 256> materials;
-        std::vector<Sphere> spheres;
-        tinybvh::BVH sphereBVH;
-        bool sphereBVHReady = false;
-
-        // Accessible by free callbacks
-        static const Sphere* g_spheres;
+        // -------------------------------------------------------------------
+        // DDA initialisation.
+        //
+        // Public because the file-scope TraverseDDA<> template in scene.cpp
+        // must call it.  Marked __forceinline so MSVC folds all of Setup's
+        // outputs into the DDA loop's register allocation rather than
+        // spilling them through a stack frame.
+        // -------------------------------------------------------------------
+        bool Setup3DDDA(Ray& ray, DDAState& state) const;
 
         const Material& GetMat(uint voxelValue) const
         {
@@ -77,10 +77,31 @@ namespace Tmpl8
             return materials[matID];
         }
 
-	    std::vector<VoxelObject> voxelObjects;
-	    std::vector<VoxelInstance> voxelInstances;
+        uint* coarseGrid;
+        std::vector<uint8_t*>                     bricks;
+        std::array<Material, MAT_COUNT + 256>     materials;
+        std::vector<Sphere>                       spheres;
+        tinybvh::BVH                              sphereBVH;
+        bool                                      sphereBVHReady = false;
+
+        // Exposed for the SphereAABB build callback, which must be a free
+        // function and cannot access Scene members directly.
+        static const Sphere* g_spheres;
+
+        std::vector<VoxelObject>   voxelObjects;
+        std::vector<VoxelInstance> voxelInstances;
 
     private:
-        bool Setup3DDDA(Ray& ray, DDAState& state) const;
+        // BVH traversal — reads this->spheres directly (no g_spheres static).
+        void TraceSphereBVH(tinybvh::Ray& ray) const;
+        __forceinline void IntersectSphereInlined(tinybvh::Ray& ray, uint32_t idx) const;
+
+        // Templated DDA: TraverseDDA<false> = FindNearest,
+        //                TraverseDDA<true>  = IsOccluded.
+        // A member template avoids the MSVC access-error that arises when a
+        // file-scope static function calls a member through __forceinline.
+        template<bool IsOcclusionRay>
+        bool TraverseDDA(Ray& ray, float nearestSphereT,
+            uint& outMaterial, int& outAxis) const;
     };
 }
