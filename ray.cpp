@@ -44,11 +44,9 @@ float3 Ray::GetNormal(const Scene& scene) const
 	// Determine the face normal based on the hit axis.
 	const float3 sign = Dsign * 2.0f - 1.0f;
 
-	return float3(
-		axis == 0 ? sign.x : 0,
-		axis == 1 ? sign.y : 0,
-		axis == 2 ? sign.z : 0
-	);
+	float3 n(0, 0, 0);
+	(&n.x)[axis] = (&sign.x)[axis];   // write only the axis component
+	return n;
 }
 
 /// <summary>
@@ -58,10 +56,14 @@ float3 Ray::GetNormal(const Scene& scene) const
 /// <returns>The albedo color of the intersected object.</returns>
 float3 Ray::GetAlbedo(const Scene& scene) const
 {
-	// If a sphere was hit, return its material albedo
-	if (sphereIndex >= 0)
-		return scene.GetSphereMat(scene.spheres[sphereIndex].material).albedo;
+	// Use a ternary to avoid branching
+	const uint matID = (sphereIndex >= 0)
+		? scene.spheres[sphereIndex].material  // sphere material
+		: voxel;                              // voxel material
 
-	// Otherwise return the voxel material albedo
-	return scene.GetMat(voxel).albedo;
+	// If it's a sphere, we use GetSphereMat, otherwise GetMat
+	// Use the ternary inside the call
+	return (sphereIndex >= 0)
+		? scene.GetSphereMat(matID).albedo
+		: scene.GetMat(matID).albedo;
 }

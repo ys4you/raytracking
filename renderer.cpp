@@ -60,7 +60,7 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
 
         // Fast-path for very large sphere scenes: skip costly shadow rays and
         // evaluate a single directional term + small ambient.
-        if (fastSphereShading && ray.sphereIndex >= 0 && (int)scene.spheres.size() >= fastSphereThreshold)
+        if (fastSphereShading && ray.sphereIndex >= 0 && static_cast<int>(scene.spheres.size()) >= fastSphereThreshold)
         {
             const float3 L = normalize(float3(0.5f, 0.8f, 0.3f));
             const float ndotl = max(0.0f, dot(sp.normal, L));
@@ -239,15 +239,33 @@ void Renderer::Init()
     // -------------------------
     // Allocate and zero the frame buffers
     // -------------------------
-
-#pragma omp parallel for collapse(2) schedule(static)
-
     // History buffer — previous frame's output, used for temporal reprojection
+
+
     history = new float3[SCRWIDTH * SCRHEIGHT];
     memset(history, 0, SCRWIDTH * SCRHEIGHT * sizeof(float3));
+
+    InitAccumulator();
+
+    const float3 orbitCenter = float3(0.5f, 0.5f, 0.5f);
+    constexpr float radius = 3.0f;
+
+    cameraSpline.points =
+    {
+        orbitCenter + float3(radius, 0, 0),
+        orbitCenter + float3(0, 0,  radius),
+        orbitCenter + float3(-radius, 0, 0),
+        orbitCenter + float3(0, 0, -radius),
+        orbitCenter + float3(radius, 0, 0) // repeat first for smooth loop
+    };
+
+    cameraSpline.BuildArcLengthTable();
+
+    cameraFollower.spline = &cameraSpline;
+    cameraFollower.speed = 1.5f;
+    cameraFollower.loop = true;
 }
 
-// -----------------------------------------------------------
 /// @brief  Per-frame update: traces one sample per pixel, blends with history,
 ///         and writes the final LDR result to the screen buffer.
 ///
@@ -256,152 +274,213 @@ void Renderer::Init()
 ///   - Stationary camera: direct 1/N averaging (samples accumulate indefinitely).
 ///   - Moving camera: bilinear reprojection from history with neighbourhood clamp.
 ///
-/// @param deltaTime Elapsed time since the last frame, in seconds.
+///
+/// @param deltaTime Elapsed time since the last frame, in milliseconds
+///                  (matches the WrldTmpl8 convention).
 // -----------------------------------------------------------
 void Renderer::Tick(float deltaTime)
 {
-    auto startTime = std::chrono::high_resolution_clock::now();
+    const float3 orbitCenter = float3(0.5f, 0.5f, 0.5f);
+
+	auto startTime = std::chrono::high_resolution_clock::now();
     sampleCount++;
     int totalRaysThisFrame = 0;
 
-    // Advance the sky simulation (sun/moon position, sky colours, etc.)
-    // Must run before the pixel loop so that skyCache is populated on the first frame.
+    // Advance the sky simulation (sun/moon position, sky colours, cache rebuild).
+    // Must run before the pixel loop so skyCache is populated on the first frame.
+
     sky.Update(deltaTime);
 
-    // Sync sky-owned lights back into the lights struct so Trace() sees updated values.
-    // Convention: directionals[0] = sun, directionals[1] = moon (pushed in Init).
+    float dt = deltaTime * 0.001f;
+
+    if (useSplineCamera)
+    {
+        cameraFollower.Update(dt);
+        camera.camPos = cameraFollower.position;
+        camera.camTarget = orbitCenter;
+    }
+
+    // Sync sky-owned directional lights back into the light list.
+    // Convention (established in Init): directionals[0] = sun, [1] = moon.
     if (lights.directionals.size() >= 2)
     {
         lights.directionals[0] = sky.sun;
         lights.directionals[1] = sky.moon;
     }
 
-    // Detect camera movement once before the pixel loop (not per-pixel)
-    bool cameraMoving = length(camera.camPos - prevCamera.camPos) > 1e-4f ||
+    // Detect camera movement once, outside the loop — not per-pixel.
+    const bool cameraMoving =
+        length(camera.camPos - prevCamera.camPos) > 1e-4f ||
         length(camera.camTarget - prevCamera.camTarget) > 1e-4f;
 
-#pragma omp parallel for schedule(dynamic)
-    for (int y = 0; y < SCRHEIGHT; y++) for (int x = 0; x < SCRWIDTH; x++)
+#pragma omp parallel for schedule(static) reduction(+:totalRaysThisFrame)
+    for (int y = 0; y < SCRHEIGHT; y++)
     {
-        const int idx = x + y * SCRWIDTH;
-
-        // -------------------------
-        // Generate a jittered primary ray using blue-noise offsets
-        // -------------------------
-        float jx = BlueNoise(x, y, sampleCount);
-        float jy = BlueNoise(y, x, sampleCount);
-        Ray r = camera.GetPrimaryRay(x + jx, y + jy);
-
-        float3 sample = Trace(r, 0, 0, 0); // trace the primary ray
-        totalRaysThisFrame++;
-
-        float3 blended;
-
-        if (!cameraMoving)
+        for (int x = 0; x < SCRWIDTH; x++)
         {
-            if (r.voxel == 0)
+            const int idx = x + y * SCRWIDTH;
+
+            // --- Jittered primary ray via blue-noise offsets ---
+            const float jx = BlueNoise(x, y, sampleCount);
+            const float jy = BlueNoise(y, x, sampleCount);
+            Ray r = camera.GetPrimaryRay(x + jx, y + jy);
+
+            const float3 sample = Trace(r, 0, 0, 0);
+            totalRaysThisFrame++;
+
+            float3 blended;
+
+            if (!cameraMoving)
             {
-                // Sky pixel — do not accumulate; write the raw sample
                 blended = sample;
+                if (r.voxel != 0)
+                    sampleCountPerPixel[idx] = 1;
             }
-            else
+            // ---------------------------------------------------------------
+            //  Moving camera — geometry hit: reproject and blend with history.
+            // ---------------------------------------------------------------
+            else if (r.voxel > 0)
             {
-                // Geometry pixel — reset and store the new sample (fully opaque blend)
-                blended = sample;
-                sampleCountPerPixel[idx] = 1; // reset so future frames can accumulate
-            }
-        }
-        else if (r.voxel > 0)
-        {
-            // -------------------------
-            // Temporal reprojection: find where this world point was last frame
-            // -------------------------
-            float3 P = r.O + r.t * r.D; // world-space hit position
-            float prev_x, prev_y;
+                const float3 P = r.O + r.t * r.D; // world-space hit position
+                float prev_x, prev_y;
 
-            if (prevCamera.WorldToScreen(P, prev_x, prev_y))
-            {
-                // Bilinear sample of the history buffer at the reprojected position
-                int   ix = static_cast<int>(prev_x);
-                int   iy = static_cast<int>(prev_y);
-                float fx = prev_x - ix; // fractional x offset
-                float fy = prev_y - iy; // fractional y offset
-
-                // Four neighbouring history texels
-                float3 a = history[ix + iy * SCRWIDTH];
-                float3 b = history[(ix + 1) + iy * SCRWIDTH];
-                float3 c = history[ix + (iy + 1) * SCRWIDTH];
-                float3 d = history[(ix + 1) + (iy + 1) * SCRWIDTH];
-
-                // Bilinear interpolation
-                float3 historySample = (1 - fx) * (1 - fy) * a + fx * (1 - fy) * b
-                    + (1 - fx) * fy * c + fx * fy * d;
-
-                // -------------------------
-                // Neighbourhood clamp: restrict history to the local colour range to
-                // reduce ghosting artefacts after disocclusion
-                // -------------------------
-                float3 lo = sample, hi = sample;
-                for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++)
+                if (prevCamera.WorldToScreen(P, prev_x, prev_y))
                 {
-                    if (dx == 0 && dy == 0) continue;
-                    int nx = x + dx, ny = y + dy;
-                    if (nx < 0 || nx >= SCRWIDTH || ny < 0 || ny >= SCRHEIGHT) continue;
-                    float3 n = accumulator[nx + ny * SCRWIDTH];
-                    lo = fminf(lo, n); // expand AABB minimum
-                    hi = fmaxf(hi, n); // expand AABB maximum
-                }
-                historySample = clamp(historySample, lo, hi); // clamp history into bbox
+                    const int   ix = static_cast<int>(prev_x);
+                    const int   iy = static_cast<int>(prev_y);
+                    const float fx = prev_x - (float)ix;
+                    const float fy = prev_y - (float)iy;
 
-                // Blend: 80 % history, 15 % new sample (implicit 5 % weight budget)
-                blended = 0.8f * historySample + 0.15f * sample;
-                sampleCountPerPixel[idx] = 6; // approximate effective sample count
+                    // Bounds guard: ix+1 / iy+1 must stay inside the buffer.
+                    // Screen-edge pixels fall back to the raw sample.
+                    if (ix < 0 || ix + 1 >= SCRWIDTH ||
+                        iy < 0 || iy + 1 >= SCRHEIGHT)
+                    {
+                        blended = sample;
+                        sampleCountPerPixel[idx] = 1;
+                    }
+                    else
+                    {
+                        // Bilinear fetch from history[] (previous frame).
+                        // history[] is read-only during this loop — safe to
+                        // read from any thread without synchronisation.
+                        const float3 h00 = history[ix + iy * SCRWIDTH];
+                        const float3 h10 = history[ix + 1 + iy * SCRWIDTH];
+                        const float3 h01 = history[ix + (iy + 1) * SCRWIDTH];
+                        const float3 h11 = history[ix + 1 + (iy + 1) * SCRWIDTH];
+
+                        const float3 top = lerp(h00, h10, fx);
+                        const float3 bot = lerp(h01, h11, fx);
+                        float3 historySample = lerp(top, bot, fy);
+
+                        // Neighbourhood clamp (variance clipping).
+                        // Builds a colour AABB from the 3×3 region in history[]
+                        // and clamps historySample into it — suppresses ghosting
+                        // after disocclusion.  history[] reads are thread-safe.
+                        float3 lo = sample, hi = sample;
+                        for (int dy = -1; dy <= 1; dy++)
+                        {
+                            for (int dx = -1; dx <= 1; dx++)
+                            {
+                                if (dx == 0 && dy == 0) continue;
+                                const int nx = x + dx, ny = y + dy;
+                                if (nx < 0 || nx >= SCRWIDTH) continue;
+                                if (ny < 0 || ny >= SCRHEIGHT) continue;
+                                const float3 nb = history[nx + ny * SCRWIDTH];
+                                lo = fminf(lo, nb);
+                                hi = fmaxf(hi, nb);
+                            }
+                        }
+                        historySample = clamp(historySample, lo, hi);
+
+                        // 80 % history + 15 % new sample.
+                        blended = 0.8f * historySample + 0.15f * sample;
+                        sampleCountPerPixel[idx] = 6;
+                    }
+                }
+                else
+                {
+                    // Reprojected point went off-screen — fresh pixel.
+                    blended = sample;
+                    sampleCountPerPixel[idx] = 1;
+                }
             }
+
+            // ---------------------------------------------------------------
+            //  Moving camera — sky hit: raw sample, no accumulation.
+            // ---------------------------------------------------------------
             else
             {
-                // Reprojection went off-screen — treat as a new pixel
                 blended = sample;
                 sampleCountPerPixel[idx] = 1;
             }
-        }
-        else
-        {
-            // Sky pixel while moving — write raw sample, no accumulation
-            blended = sample;
-            sampleCountPerPixel[idx] = 1;
-        }
 
-        // Write the blended result to both the accumulator and the display buffer
-        accumulator[idx] = blended;
-        screen->pixels[idx] = RGBF32_to_RGB8(blended); // tone-map and pack to 8-bit
-    }
+            // accumulator[] is partitioned by the static schedule: each thread
+            // owns a contiguous row block and never writes another thread's rows.
+            accumulator[idx] = blended;
+            screen->pixels[idx] = RGBF32_to_RGB8(blended);
 
-    // Save the current camera state so it can be used as prevCamera next frame
+        } // end for x
+    } // end for y  ← both loops explicitly closed; nothing below runs in parallel
+
+    // Save camera state for reprojection next frame.
     prevCamera = camera;
 
-    // Process keyboard / mouse input and update the camera transform
+    // Input runs after the pixel loop so the camera cannot move mid-frame.
     camera.HandleInput(deltaTime);
 
-    // Ping-pong the accumulator and history pointers so the current frame
-    // becomes the history for the next frame
+    // Ping-pong: this frame's accumulator becomes next frame's history.
     swap(history, accumulator);
 
-    // -------------------------
-    // Performance counters
-    // -------------------------
+    // -----------------------------------------------------------------------
+    //  Performance counters
+    // -----------------------------------------------------------------------
     auto endTime = std::chrono::high_resolution_clock::now();
     std::chrono::duration<float> frameDuration = endTime - startTime;
     lastFrameTime = frameDuration.count();
     avgFrameTimeMs = lastFrameTime * 1000.0f;
     fps = 1.0f / lastFrameTime;
-    rps = (float)(SCRWIDTH * SCRHEIGHT) / (lastFrameTime * 1000000.0f); // Mrays/s
+    rps = (float)totalRaysThisFrame / (lastFrameTime * 1'000'000.0f);
 
-    // Rebuild the sphere BVH if a sphere was added or removed this frame
+    // Rebuild sphere BVH if the scene changed this frame.
     if (rebuildSphereBVH)
     {
         scene.BuildSphereBVH();
         rebuildSphereBVH = false;
     }
+}
+
+// -----------------------------------------------------------
+// @brief  Draws a dedicated statistics/debug window
+// -----------------------------------------------------------
+void Renderer::UIStats()
+{
+    ImGui::Begin("Stats"); // <-- own window now
+
+    ImGui::Text("Renderer");
+    ImGui::Separator();
+    ImGui::Text("Voxel: %i",
+        camera.GetPinholeRay(static_cast<float>(mousePos.x), static_cast<float>(mousePos.y)).voxel);
+    ImGui::Text("%.2f ms | %.1f FPS", avgFrameTimeMs, fps);
+    ImGui::Text("%.1f Mrays/s", rps);
+
+    // ===== FPS Graph =====
+    static float fpsHistory[120] = {}; // store last 120 frames (~2s at 60fps)
+    static int offset = 0;
+    fpsHistory[offset] = fps;
+    offset = (offset + 1) % IM_ARRAYSIZE(fpsHistory);
+
+    // Draw FPS line graph
+    ImGui::PlotLines("FPS", fpsHistory, IM_ARRAYSIZE(fpsHistory), offset, nullptr, 0.0f, 120.0f, ImVec2(0, 60));
+
+    // Draw 60 FPS reference line
+    ImDrawList* draw_list = ImGui::GetWindowDrawList();
+    ImVec2 graphPos = ImGui::GetItemRectMin();
+    ImVec2 graphSize = ImGui::GetItemRectSize();
+    float y60 = graphPos.y + graphSize.y * (1.0f - 60.0f / 120.0f); // scale 60FPS into graph height
+    draw_list->AddLine(ImVec2(graphPos.x, y60), ImVec2(graphPos.x + graphSize.x, y60), IM_COL32(255, 0, 0, 255));
+
+    ImGui::End(); 
 }
 
 // -----------------------------------------------------------
@@ -414,16 +493,7 @@ void Renderer::UI()
 {
     ImGui::Begin("Inspector");
 
-    // ===== RUNTIME STATS =====
-    ImGui::BeginChild("Stats", ImVec2(0, 90), true);
-    ImGui::Text("Renderer");
-    ImGui::Separator();
-    // Show the voxel value under the mouse cursor (uses a pinhole ray for stability)
-    ImGui::Text("Voxel: %i",
-        camera.GetPinholeRay(static_cast<float>(mousePos.x), static_cast<float>(mousePos.y)).voxel);
-    ImGui::Text("%.2f ms | %.1f FPS", avgFrameTimeMs, fps);
-    ImGui::Text("%.1f Mrays/s", rps);
-    ImGui::EndChild();
+    UIStats();
 
     ImGui::Spacing();
 
@@ -441,6 +511,15 @@ void Renderer::UI()
         {
             ImGui::Indent();
             bool cameraChanged = false; // tracks whether any camera parameter changed
+
+            if (ImGui::Checkbox("Use Spline Camera", &useSplineCamera))
+                ResetAccumulator();
+
+            ImGui::Text("Position:  %.3f  %.3f  %.3f",
+                camera.camPos.x, camera.camPos.y, camera.camPos.z);
+
+            ImGui::Text("Target:    %.3f  %.3f  %.3f",
+                camera.camTarget.x, camera.camTarget.y, camera.camTarget.z);
 
             ImGui::Text("Depth of Field");
             cameraChanged |= ImGui::SliderFloat("Aperture", &camera.aperture, 0.0f, 0.5f, "%.4f");

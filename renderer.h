@@ -5,6 +5,8 @@
 #include "Core/Lighting/PointLight.h"
 #include "Core/Lighting/SpotLight.h"
 
+#include "Core/Animations/SplineFollower.h"
+
 
 class material;
 
@@ -77,6 +79,7 @@ public:
 	void Init();
 	float3 Trace( Ray& ray, int = 0, int = 0, int = 0 );
 	void Tick( float deltaTime );
+	void UIStats();
 	void UI();
 	void LightUI() const;
 	static bool MaterialUI(const char* label, Material& material);
@@ -99,7 +102,7 @@ public:
 	// data members
 	int2 mousePos;
 	float3* accumulator = nullptr;	// for episode 3
-	float3* history;		// for episode 5
+	float3* history = nullptr;		// for episode 5
 	Scene scene;
 	Camera camera;
 	Camera prevCamera;
@@ -138,6 +141,11 @@ public:
 	//sky
 	Sky sky;
 
+	//Spline
+	CatmullRomSpline cameraSpline;
+	SplineFollower cameraFollower;
+
+	bool useSplineCamera = true;
 
 };
 

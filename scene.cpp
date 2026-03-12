@@ -36,22 +36,19 @@ static bool SphereIntersect(tinybvh::Ray& ray, uint32_t idx)
 {
     const Sphere& s = Scene::g_spheres[idx];
 
-    // Build the oc vector (ray origin relative to sphere centre)
     float ocx = ray.O.x - s.center.x;
     float ocy = ray.O.y - s.center.y;
     float ocz = ray.O.z - s.center.z;
 
-    const float sqrtDisc = sqrtf(disc);
-    float t = -b - sqrtDisc;
-    if (t <= 0) t = -b + sqrtDisc; // front face missed; try back face
+    float b = ocx * ray.D.x + ocy * ray.D.y + ocz * ray.D.z;
     float oc2 = ocx * ocx + ocy * ocy + ocz * ocz;
     float disc = b * b - (oc2 - s.radius * s.radius);
 
-    if (disc <= 0) return false; // ray misses the sphere
+    if (disc <= 0) return false;
 
-    // Choose the nearer positive root
-    float t = -b - sqrtf(disc);
-    if (t <= 0) t = -b + sqrtf(disc); // front face missed; try back face
+    float sqrtDisc = sqrtf(disc);
+    float t = -b - sqrtDisc;
+    if (t <= 0) t = -b + sqrtDisc;
 
     if (t > 0 && t < ray.hit.t)
     {
@@ -357,66 +354,66 @@ static bool IntersectSphere(const Ray& ray, const Sphere& s, float& tHit)
 /// If the ray origin is outside the unit cube, the ray is advanced to
 /// the entry point first.  The DDA step, tmax, and tdelta values are
 /// pre-computed so the traversal loop only needs comparisons and additions.
-///
-/// @param ray    The ray to traverse (read-only apart from ray.inside / ray.axis).
-/// @param state  Output DDA state used by FindNearest / IsOccluded.
-/// @return       False if the ray completely misses the voxel world.
 bool Scene::Setup3DDDA(Ray& ray, DDAState& state) const
 {
     state.t = 0;
-    bool startedInGrid = point_in_cube(ray.O);
+    const bool startedInGrid = point_in_cube(ray.O);
 
     if (!startedInGrid)
     {
-        // Advance the ray to the cube entry point
         state.t = intersect_cube(ray);
         if (state.t > 1e33f) return false; // ray misses the world entirely
     }
 
-    static const float cellSize = 1.0f / WORLDSIZE; // world-space size of one voxel
+    static const float cellSize = 1.0f / WORLDSIZE;
 
-    // Step direction: +1 or -1 per axis depending on ray sign
+    // Step direction: +1 or -1 per axis
     state.step = make_int3(
-        1 - ray.Dsign.x * 2,
-        1 - ray.Dsign.y * 2,
-        1 - ray.Dsign.z * 2
+        1 - (int)ray.Dsign.x * 2,
+        1 - (int)ray.Dsign.y * 2,
+        1 - (int)ray.Dsign.z * 2
     );
 
-    // Entry position in grid space (small epsilon to avoid landing exactly on a boundary)
-    float3 posInGrid;
-    posInGrid.x = (ray.O.x + (state.t + 0.00005f) * ray.D.x) * WORLDSIZE;
-    posInGrid.y = (ray.O.y + (state.t + 0.00005f) * ray.D.y) * WORLDSIZE;
-    posInGrid.z = (ray.O.z + (state.t + 0.00005f) * ray.D.z) * WORLDSIZE;
+    // Entry position in grid space.
+    // The 0.00005f epsilon nudges the sample point just past the entry plane
+    // so it lands cleanly inside the first voxel rather than on its boundary.
+    const float3 posInGrid = float3(
+        (ray.O.x + (state.t + 0.00005f) * ray.D.x) * WORLDSIZE,
+        (ray.O.y + (state.t + 0.00005f) * ray.D.y) * WORLDSIZE,
+        (ray.O.z + (state.t + 0.00005f) * ray.D.z) * WORLDSIZE
+    );
 
-    // The next grid plane the ray will cross on each axis
-    float3 gridPlanes;
-    gridPlanes.x = (ceilf(posInGrid.x) - ray.Dsign.x) * cellSize;
-    gridPlanes.y = (ceilf(posInGrid.y) - ray.Dsign.y) * cellSize;
-    gridPlanes.z = (ceilf(posInGrid.z) - ray.Dsign.z) * cellSize;
+    // Next grid plane the ray will cross on each axis
+    const float3 gridPlanes = float3(
+        (ceilf(posInGrid.x) - ray.Dsign.x) * cellSize,
+        (ceilf(posInGrid.y) - ray.Dsign.y) * cellSize,
+        (ceilf(posInGrid.z) - ray.Dsign.z) * cellSize
+    );
 
-    // Starting voxel index, clamped to valid range
-    state.X = clamp(int(posInGrid.x), 0, WORLDSIZE - 1);
-    state.Y = clamp(int(posInGrid.y), 0, WORLDSIZE - 1);
-    state.Z = clamp(int(posInGrid.z), 0, WORLDSIZE - 1);
+    // Starting voxel, clamped to valid range
+    state.X = clamp((int)posInGrid.x, 0, WORLDSIZE - 1);
+    state.Y = clamp((int)posInGrid.y, 0, WORLDSIZE - 1);
+    state.Z = clamp((int)posInGrid.z, 0, WORLDSIZE - 1);
 
-    // How far to travel along the ray to cross one voxel on each axis
+    // Distance to travel along the ray to cross one voxel on each axis
     state.tdelta.x = cellSize * state.step.x / ray.D.x;
     state.tdelta.y = cellSize * state.step.y / ray.D.y;
     state.tdelta.z = cellSize * state.step.z / ray.D.z;
 
-    // t at which the ray first crosses the next plane on each axis
-    state.tmax.x = (gridPlanes.x - ray.O.x) / ray.D.x;
-    state.tmax.y = (gridPlanes.y - ray.O.y) / ray.D.y;
-    state.tmax.z = (gridPlanes.z - ray.O.z) / ray.D.z;
+    // t at which the ray first crosses the next plane on each axis.
+    // offsetO shifts the origin by EPSILON along the ray so the DDA never
+    // immediately re-hits the surface the ray just left — without mutating ray.O.
+    const float3 offsetO = ray.O + EPSILON * ray.D;
+    state.tmax.x = (gridPlanes.x - offsetO.x) / ray.D.x;
+    state.tmax.y = (gridPlanes.y - offsetO.y) / ray.D.y;
+    state.tmax.z = (gridPlanes.z - offsetO.z) / ray.D.z;
 
-    // Flag whether the ray starts inside a filled voxel (used to handle
-    // the "inside" case in FindNearest)
-    uint cell = GetVoxel(state.X, state.Y, state.Z);
+    // Flag whether the ray starts inside a filled voxel
+    const uint cell = GetVoxel(state.X, state.Y, state.Z);
     ray.inside = cell != 0 && startedInGrid;
 
     return true;
 }
-
 // -----------------------------------------------------------
 // FindNearest
 // -----------------------------------------------------------
@@ -431,8 +428,6 @@ bool Scene::Setup3DDDA(Ray& ray, DDAState& state) const
 /// On miss: ray.voxel = 0, ray.sphereIndex = -1, ray.t = 1e34f.
 void Scene::FindNearest(Ray& ray) const
 {
-    // Small epsilon push to avoid immediately re-hitting the surface we just left
-    ray.O += EPSILON * ray.D;
 
     // -------------------------
     // Sphere intersection
@@ -591,9 +586,6 @@ void Scene::FindNearest(Ray& ray) const
 /// @return     True if the ray is blocked before reaching ray.t.
 bool Scene::IsOccluded(Ray& ray) const
 {
-    // Push origin slightly forward and shorten the ray to avoid self-shadowing
-    ray.O += EPSILON * ray.D;
-    ray.t -= EPSILON * 2.0f;
 
     DDAState s;
     if (!Setup3DDDA(ray, s)) return false; // ray misses the world
@@ -601,8 +593,8 @@ bool Scene::IsOccluded(Ray& ray) const
     while (s.t < ray.t) // only traverse up to the light distance
     {
         const uint cell = GetVoxel(s.X, s.Y, s.Z);
-        if (cell) return true; // hit a filled voxel — light is occluded
-
+        if (cell && GetMat(cell).type != MaterialType::Dielectric)
+            return true;
         // Advance to the next voxel boundary
         if (s.tmax.x < s.tmax.y)
         {
