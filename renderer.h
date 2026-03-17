@@ -5,6 +5,10 @@
 #include "Core/Lighting/PointLight.h"
 #include "Core/Lighting/SpotLight.h"
 #include "Core/Animations/SplineFollower.h"
+
+#include "PhysicsWorld.h"
+
+
 class material;
 struct SceneLights
 {
@@ -111,5 +115,7 @@ namespace Tmpl8
 		CatmullRomSpline cameraSpline;
 		SplineFollower cameraFollower;
 		bool useSplineCamera = false;
+		PhysicsWorld physics;
+
 	};
 } // namespace Tmpl8

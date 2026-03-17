@@ -49,6 +49,7 @@
     <ClCompile Include="lib\tiny_bvh.cpp" />
     <ClCompile Include="VoxelFactory.cpp" />
     <ClCompile Include="template\Core\Animations\Spline.cpp" />
+    <ClCompile Include="PhysicsBall.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="renderer.h" />
@@ -117,6 +118,8 @@
     <ClInclude Include="VoxelInstance.h" />
     <ClInclude Include="template\Core\Animations\Spline.h" />
     <ClInclude Include="template\Core\Animations\SplineFollower.h" />
+    <ClInclude Include="PhysicsWorld.h" />
+    <ClInclude Include="PhysicsBall.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="template">

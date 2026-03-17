@@ -23,7 +23,8 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
 {
     constexpr int MAX_DEPTH = 5;
 
-    if (depth >= MAX_DEPTH) return float3(0, 0, 0);
+    if (depth >= MAX_DEPTH) 
+        return float3(0, 0, 0);
 
     // Russian roulette: probabilistically terminate secondary rays at depth >= 2.
     // This is unbiased — terminated paths are compensated by the 1/p weight on
@@ -31,7 +32,8 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
     if (depth >= 2)
     {
         constexpr float surviveP = 0.75f;
-        if (RandomFloat() > surviveP) return float3(0, 0, 0);
+        if (RandomFloat() > surviveP) 
+            return float3(0, 0, 0);
         // Surviving rays are NOT upweighted here because we return colour
         // directly (not path-traced energy); this is a simple termination
         // approximation suitable for Whitted-style tracing.
@@ -180,9 +182,15 @@ void Renderer::Init()
 
     InitAccumulator();
 
+    for (int i = 0; i < static_cast<int>(scene.spheres.size()); i++)
+    {
+        int b = physics.AddBall(scene.spheres[i].center, scene.spheres[i].radius);
+        physics.balls[b].visualIndex = i;
+    }
+
     // Camera spline (demo / attract mode).
     const float3 orbitCenter = float3(0.5f, 0.5f, 0.5f);
-    constexpr float radius = 0.3f;
+    constexpr float radius = 2.f;
     cameraSpline.points =
     {
         orbitCenter + float3(radius, 0,      0),
@@ -271,11 +279,27 @@ void Renderer::Tick(float deltaTime)
         rayTableDirty = false;
     }
 
+    // ── Physics ──────────────────────────────────────────────────────────────
+    physics.Update(dt, scene);
+
+    // Sync physics ball positions → visual spheres
+    bool anyBallMoved = !physics.balls.empty();
+    for (auto& ball : physics.balls)
+        if (ball.visualIndex >= 0 && ball.visualIndex < static_cast<int>(scene.spheres.size()))
+            scene.spheres[ball.visualIndex].center = ball.position;
+
+    // Rebuild BVH so rendering sees the new positions
+    if (anyBallMoved)
+    {
+        scene.BuildSphereBVH();
+        ResetAccumulator();
+    }
+
     // ── Main pixel loop — tile-based ────────────────────────────────────────
     // 16×16 tiles improve cache reuse: adjacent pixels in a tile share BVH
     // traversal state and read nearby memory.  OpenMP distributes whole tiles
     // across threads so each thread works a contiguous region of the screen.
-    constexpr int TILE = 16;
+	constexpr int TILE = 16;
     const int tilesX = (SCRWIDTH + TILE - 1) / TILE;
     const int tilesY = (SCRHEIGHT + TILE - 1) / TILE;
     const int totalTiles = tilesX * tilesY;
@@ -678,7 +702,7 @@ void Renderer::UI()
         static int    spawnMatIndex = MAT_MIRROR;
 
         static const char* countLabels[] = { "1", "10", "100", "1000" };
-        static const int   countValues[] = { 1,   10,   100,   1000 };
+        static constexpr int   countValues[] = { 1,   10,   100,   1000 };
         static int selectedCount = 0;
 
         ImGui::Text("Spawn Range");
@@ -693,7 +717,7 @@ void Renderer::UI()
         ImGui::SliderFloat("Radius", &spawnRadius, 0.005f, 0.2f, "%.3f");
 
         static const char* matNames[] = { "Mirror", "Dielectric", "Green" };
-        static const uint  matIndices[] = { (uint)MAT_MIRROR, (uint)MAT_DIELECTRIC, (uint)MAT_GREEN };
+        static constexpr uint  matIndices[] = { (uint)MAT_MIRROR, (uint)MAT_DIELECTRIC, (uint)MAT_GREEN };
         static int selectedMat = 0;
         ImGui::Combo("Material", &selectedMat, matNames, IM_ARRAYSIZE(matNames));
         spawnMatIndex = matIndices[selectedMat];

@@ -290,22 +290,33 @@ Scene::Scene()
     materials[MAT_GREEN].albedo = { 0.f, 1.f, 0.f };
     materials[MAT_GREEN].roughness = 1.0f;
 
-    //VoxLoader::Load("assets/street.vox", *this);
+    for (uint i = MAT_RANDOM_START; i < MAT_COUNT; i++)
+    {
+        materials[i].type = MaterialType::Lambertian;
+        materials[i].albedo = float3(RandomFloat(), RandomFloat(), RandomFloat());
+        materials[i].roughness = 1.0f;
+    }
 
-    //VoxelFactory::FlattenInstance(
-    //    *this,
-    //    0,
-    //    float3(128, 128, 128),
-    //    float3(-3.14159f / 2.0f, 0, 0),  // -90° around X to convert Z-up to Y-up
-    //    float3(1, 1, 1)
-    //);
+    VoxLoader::Load("assets/checkerboard_floor_256.vox", *this);
+
+    VoxelFactory::FlattenInstance(
+        *this,
+        0,
+        float3(128, 1, 128),
+        float3(-3.14159f / 2.0f, 0, 0),  // -90° around X to convert Z-up to Y-up
+        float3(1, 1, 1)
+    );
 
     static float3 spawnMin = { 0.1f, 0.1f, 0.1f };
     static float3 spawnMax = { 0.9f, 0.9f, 0.9f };
     static float  spawnRadius = 0.01f;
 
-    for (int i = 0; i < 1000; ++i)
+    for (int i = 0; i < 100; ++i)
     {
+        uint mat =
+            MAT_RANDOM_START +
+            (uint)(RandomFloat() * (MAT_RANDOM_END - MAT_RANDOM_START));
+
         spheres.push_back(Sphere{
             float3(
                 spawnMin.x + RandomFloat() * (spawnMax.x - spawnMin.x),
@@ -313,13 +324,10 @@ Scene::Scene()
                 spawnMin.z + RandomFloat() * (spawnMax.z - spawnMin.z)
             ),
             spawnRadius,
-            MAT_GREEN
+            mat
             });
     }
 
-    // Spheres are spawned via the ImGui Sphere Spawner panel at runtime.
-    // Starting with zero spheres means the BVH is not built and TraceSphereBVH
-    // is never called, eliminating 24% of frame time when spheres are absent.
     BuildSphereBVH();
 }
 

@@ -125,6 +125,7 @@
     <ClCompile Include="lib\tiny_bvh.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="PhysicsBall.cpp" />
     <ClCompile Include="template\Core\Animations\Spline.cpp" />
     <ClCompile Include="stb_image_impl.cpp" />
     <ClCompile Include="lib\VoxLoader.cpp" />
@@ -157,6 +158,8 @@
     <ClInclude Include="HDRCubemap.h" />
     <ClInclude Include="lib\tiny_bvh.h" />
     <ClInclude Include="lib\VoxLoader.h" />
+    <ClInclude Include="PhysicsBall.h" />
+    <ClInclude Include="PhysicsWorld.h" />
     <ClInclude Include="Sphere.h" />
     <ClInclude Include="template\Core\Animations\Spline.h" />
     <ClInclude Include="template\Core\Animations\SplineFollower.h" />

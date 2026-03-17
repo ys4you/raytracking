@@ -13,7 +13,7 @@ struct Frustum
 	Plane plane[4];
 };
 
-inline float planeDist(Plane& plane, float3& pos)
+inline float planeDist(const Plane& plane, const float3& pos)
 {
 	return dot(float3(plane), pos) - plane.w;
 }
@@ -38,7 +38,7 @@ public:
 
 	bool WorldToScreen(const float3& P, float& outX, float& outY) const;
 
-	float aspect = (float)SCRWIDTH / (float)SCRHEIGHT;
+	float aspect = static_cast<float>(SCRWIDTH) / static_cast<float>(SCRHEIGHT);
 	float3 camPos, camTarget;
 	float3 camRight;
 	float3 camUp;

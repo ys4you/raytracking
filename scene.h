@@ -26,7 +26,10 @@ enum MaterialID : uint
     MAT_MIRROR = 1,
     MAT_DIELECTRIC = 2,
     MAT_GREEN = 3,
-    MAT_COUNT = 4
+
+    MAT_RANDOM_START = 4,
+    MAT_RANDOM_END = 104,   // 100 random materials
+    MAT_COUNT = 105
 };
 static constexpr int TOTAL_MATS = MAT_COUNT + 256;
 
@@ -77,7 +80,7 @@ struct SphereSOA
             cz[i] = spheres[i].center.z;
             r2[i] = spheres[i].radius * spheres[i].radius;
             radius[i] = spheres[i].radius;
-            material[i] = (int)spheres[i].material;
+            material[i] = static_cast<int>(spheres[i].material);
         }
     }
 };
@@ -111,11 +114,12 @@ namespace Tmpl8
         // Public so external callers (e.g. physics) can initialise DDA state.
         bool Setup3DDDA(Ray& ray, DDAState& state) const;
 
-        const Material& GetMat(uint voxelValue) const
+        [[nodiscard]] const Material& GetMat(uint voxelValue) const
         {
             return materials[MAT_COUNT + (voxelValue - 1)];
         }
-        const Material& GetSphereMat(uint matID) const
+
+        [[nodiscard]] const Material& GetSphereMat(uint matID) const
         {
             return materials[matID];
         }
