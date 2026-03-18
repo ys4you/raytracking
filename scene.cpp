@@ -5,14 +5,10 @@
 #include "VoxelFactory.h"
 
 #include <random>
-#include <immintrin.h>   // AVX2
+#include <immintrin.h>
 
 const Sphere* Scene::g_spheres = nullptr;
 
-// ---------------------------------------------------------------------------
-// SphereAABB — tinybvh build callback.  Still reads from the AoS g_spheres
-// array; only the per-ray intersection hot path uses the SOA.
-// ---------------------------------------------------------------------------
 static void SphereAABB(uint32_t idx, tinybvh::bvhvec3& mn, tinybvh::bvhvec3& mx)
 {
     const Sphere& s = Scene::g_spheres[idx];
@@ -20,14 +16,7 @@ static void SphereAABB(uint32_t idx, tinybvh::bvhvec3& mn, tinybvh::bvhvec3& mx)
     mx = { s.center.x + s.radius, s.center.y + s.radius, s.center.z + s.radius };
 }
 
-// ---------------------------------------------------------------------------
-// TraceSphereBVH — hand-rolled ordered-stack traversal.
-//
-// Calls IntersectSphereInlined directly at every leaf, eliminating
-// the customIntersect function-pointer indirection that sphereBVH.Intersect()
-// would otherwise use. The compiler can inline the sphere math directly
-// into the leaf loop body, giving a measurable win over the callback path.
-// ---------------------------------------------------------------------------
+// Legacy BVH2 traversal, kept around for A/B comparison
 void Scene::TraceSphereBVH(tinybvh::Ray& ray) const
 {
     using Node = tinybvh::BVH::BVHNode;
@@ -74,9 +63,6 @@ void Scene::TraceSphereBVH(tinybvh::Ray& ray) const
     }
 }
 
-// ---------------------------------------------------------------------------
-// IntersectSphereInlined — reads from SphereSOA, force-inlined into leaf loop.
-// ---------------------------------------------------------------------------
 __forceinline void Scene::IntersectSphereInlined(tinybvh::Ray& ray, uint32_t idx) const
 {
     const float ocx = ray.O.x - sphereSOA.cx[idx];
@@ -100,115 +86,126 @@ __forceinline void Scene::IntersectSphereInlined(tinybvh::Ray& ray, uint32_t idx
     }
 }
 
-// ---------------------------------------------------------------------------
-// IntersectSpheresAVX8 — brute-force 8-wide AVX2 intersection.
-//
-// Used when sphereBVHReady is false (< 2 spheres, or mid-rebuild).
-// Processes 8 spheres per iteration using 256-bit SIMD.  The SOA padding
-// guarantees the arrays are always a multiple-of-8 in length, so no
-// tail-handling is needed.
-// ---LLM helped---
-// Returns the index of the nearest hit, or -1 on miss.
-// ---------------------------------------------------------------------------
-static int IntersectSpheresAVX8(
-    const SphereSOA& soa,
-    const tinybvh::Ray& ray,
-    float& outT)
+/// DDA through the uniform sphere grid. Replaces the BVH for the hot path.
+void Scene::TraceSphereGrid(Ray& ray, float& nearestT, int& nearestIdx) const
 {
-    const __m256 ox = _mm256_set1_ps(ray.O.x);
-    const __m256 oy = _mm256_set1_ps(ray.O.y);
-    const __m256 oz = _mm256_set1_ps(ray.O.z);
-    const __m256 dx = _mm256_set1_ps(ray.D.x);
-    const __m256 dy = _mm256_set1_ps(ray.D.y);
-    const __m256 dz = _mm256_set1_ps(ray.D.z);
+    // Slab test against the AABB of all spheres — skip everything if we miss
+    const float3& bMin = sphereGrid.boundsMin;
+    const float3& bMax = sphereGrid.boundsMax;
 
-    __m256 bestT = _mm256_set1_ps(outT);
-    __m256 bestIdx = _mm256_set1_ps(-1.f);
+    const float tx1 = (bMin.x - ray.O.x) * ray.rD.x;
+    const float tx2 = (bMax.x - ray.O.x) * ray.rD.x;
+    const float ty1 = (bMin.y - ray.O.y) * ray.rD.y;
+    const float ty2 = (bMax.y - ray.O.y) * ray.rD.y;
+    const float tz1 = (bMin.z - ray.O.z) * ray.rD.z;
+    const float tz2 = (bMax.z - ray.O.z) * ray.rD.z;
 
-    const uint32_t padded = (uint32_t)soa.cx.size();
+    float tmin = max(max(min(tx1, tx2), min(ty1, ty2)), min(tz1, tz2));
+    float tmax = min(min(max(tx1, tx2), max(ty1, ty2)), max(tz1, tz2));
 
-    for (uint32_t i = 0; i < padded; i += 8)
+    if (tmax < 0.f || tmin > tmax || tmin > nearestT) return;
+
+    constexpr int   RES = SphereGrid::SGRID_RES;
+    constexpr float CELL = SphereGrid::CELL_SIZE;
+
+    float entryT = max(tmin, 0.f);
+    float3 entryPos = ray.O + (entryT + 0.0001f) * ray.D;
+
+    int X = clamp(static_cast<int>(entryPos.x / CELL), 0, RES - 1);
+    int Y = clamp(static_cast<int>(entryPos.y / CELL), 0, RES - 1);
+    int Z = clamp(static_cast<int>(entryPos.z / CELL), 0, RES - 1);
+
+    const int stepX = (ray.D.x >= 0.f) ? 1 : -1;
+    const int stepY = (ray.D.y >= 0.f) ? 1 : -1;
+    const int stepZ = (ray.D.z >= 0.f) ? 1 : -1;
+
+    const float nextX = ((ray.D.x >= 0.f) ? (X + 1) : X) * CELL;
+    const float nextY = ((ray.D.y >= 0.f) ? (Y + 1) : Y) * CELL;
+    const float nextZ = ((ray.D.z >= 0.f) ? (Z + 1) : Z) * CELL;
+
+    float tmaxX = (nextX - ray.O.x) * ray.rD.x;
+    float tmaxY = (nextY - ray.O.y) * ray.rD.y;
+    float tmaxZ = (nextZ - ray.O.z) * ray.rD.z;
+
+    const float tdeltaX = CELL * fabsf(ray.rD.x);
+    const float tdeltaY = CELL * fabsf(ray.rD.y);
+    const float tdeltaZ = CELL * fabsf(ray.rD.z);
+
+    while (true)
     {
-        // oc = ray.O - sphere.center
-        const __m256 ocx = _mm256_sub_ps(ox, _mm256_loadu_ps(soa.cx.data() + i));
-        const __m256 ocy = _mm256_sub_ps(oy, _mm256_loadu_ps(soa.cy.data() + i));
-        const __m256 ocz = _mm256_sub_ps(oz, _mm256_loadu_ps(soa.cz.data() + i));
+        // If we're past the best hit, all remaining cells are farther
+        const float cellEntry = max(max(tmaxX - tdeltaX, tmaxY - tdeltaY),
+            tmaxZ - tdeltaZ);
+        if (cellEntry > nearestT) break;
 
-        // b = dot(oc, D)
-        __m256 b = _mm256_fmadd_ps(ocx, dx,
-            _mm256_fmadd_ps(ocy, dy,
-                _mm256_mul_ps(ocz, dz)));
+        const int cellIdx = X + Y * RES + Z * SphereGrid::SGRID_RES2;
+        const uint32_t cnt = sphereGrid.cellCount[cellIdx];
 
-        // oc2 = dot(oc, oc)
-        __m256 oc2 = _mm256_fmadd_ps(ocx, ocx,
-            _mm256_fmadd_ps(ocy, ocy,
-                _mm256_mul_ps(ocz, ocz)));
-
-        // disc = b*b - (oc2 - r2)
-        const __m256 r2 = _mm256_loadu_ps(soa.r2.data() + i);
-        const __m256 disc = _mm256_sub_ps(
-            _mm256_mul_ps(b, b),
-            _mm256_sub_ps(oc2, r2));
-
-        // skip lanes where disc <= 0
-        const __m256 zero = _mm256_setzero_ps();
-        const __m256 valid = _mm256_cmp_ps(disc, zero, _CMP_GT_OQ);
-        if (_mm256_movemask_ps(valid) == 0) continue;
-
-        const __m256 sqrtDisc = _mm256_sqrt_ps(
-            _mm256_max_ps(disc, zero));   // clamp for safety
-
-        // t0 = -b - sqrt(disc),  t1 = -b + sqrt(disc)
-        const __m256 nb = _mm256_sub_ps(zero, b);
-        __m256 t0 = _mm256_sub_ps(nb, sqrtDisc);
-        __m256 t1 = _mm256_add_ps(nb, sqrtDisc);
-
-        // pick t0 if t0 > 0, else t1
-        __m256 useT0 = _mm256_cmp_ps(t0, zero, _CMP_GT_OQ);
-        __m256 t = _mm256_blendv_ps(t1, t0, useT0);
-
-        // keep only t > 0 and t < bestT
-        __m256 mask = _mm256_and_ps(valid,
-            _mm256_and_ps(
-                _mm256_cmp_ps(t, zero, _CMP_GT_OQ),
-                _mm256_cmp_ps(t, bestT, _CMP_LT_OQ)));
-
-        if (_mm256_movemask_ps(mask) == 0) continue;
-
-        // update bestT lane-by-lane
-        bestT = _mm256_blendv_ps(bestT, t, mask);
-
-        // record lane indices as floats
-        const __m256 idx8 = _mm256_set_ps(
-            float(i + 7), float(i + 6), float(i + 5), float(i + 4),
-            float(i + 3), float(i + 2), float(i + 1), float(i + 0));
-        bestIdx = _mm256_blendv_ps(bestIdx, idx8, mask);
-    }
-
-    // horizontal reduce: find the lane with the minimum t
-    // Use a simple scalar reduce over the 8 lanes.
-    alignas(32) float tArr[8];
-    alignas(32) float iArr[8];
-    _mm256_store_ps(tArr, bestT);
-    _mm256_store_ps(iArr, bestIdx);
-
-    float minT = outT;
-    int   minI = -1;
-    for (int k = 0; k < 8; ++k)
-    {
-        if (iArr[k] >= 0.f && tArr[k] < minT)
+        if (cnt > 0)
         {
-            minT = tArr[k];
-            minI = (int)iArr[k];
+            const uint32_t start = sphereGrid.cellStart[cellIdx];
+            const uint32_t* ids = sphereGrid.indices.data() + start;
+
+            for (uint32_t j = 0; j < cnt; j++)
+            {
+                const uint32_t i = ids[j];
+
+                const float ocx = ray.O.x - sphereSOA.cx[i];
+                const float ocy = ray.O.y - sphereSOA.cy[i];
+                const float ocz = ray.O.z - sphereSOA.cz[i];
+
+                const float b = ocx * ray.D.x + ocy * ray.D.y + ocz * ray.D.z;
+                const float oc2 = ocx * ocx + ocy * ocy + ocz * ocz;
+                const float disc = b * b - (oc2 - sphereSOA.r2[i]);
+
+                if (disc <= 0.f) continue;
+
+                const float sqrtDisc = sqrtf(disc);
+                float t = -b - sqrtDisc;
+                if (t <= 0.f) t = -b + sqrtDisc;
+
+                if (t > 0.f && t < nearestT)
+                {
+                    nearestT = t;
+                    nearestIdx = static_cast<int>(i);
+                }
+            }
+        }
+
+        // Step to the next cell
+        if (tmaxX < tmaxY)
+        {
+            if (tmaxX < tmaxZ)
+            {
+                X += stepX;
+                if (static_cast<uint>(X) >= static_cast<uint>(RES)) break;
+                tmaxX += tdeltaX;
+            }
+            else
+            {
+                Z += stepZ;
+                if (static_cast<uint>(Z) >= static_cast<uint>(RES)) break;
+                tmaxZ += tdeltaZ;
+            }
+        }
+        else
+        {
+            if (tmaxY < tmaxZ)
+            {
+                Y += stepY;
+                if (static_cast<uint>(Y) >= static_cast<uint>(RES)) break;
+                tmaxY += tdeltaY;
+            }
+            else
+            {
+                Z += stepZ;
+                if (static_cast<uint>(Z) >= static_cast<uint>(RES)) break;
+                tmaxZ += tdeltaZ;
+            }
         }
     }
-    outT = minT;
-    return minI;
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 __forceinline static float intersect_cube(Ray& ray)
 {
@@ -233,9 +230,6 @@ __forceinline static bool point_in_cube(const float3& pos)
         && pos.x <= 1.f && pos.y <= 1.f && pos.z <= 1.f;
 }
 
-// ---------------------------------------------------------------------------
-// Brick grid
-// ---------------------------------------------------------------------------
 
 uint Scene::GetVoxel(uint x, uint y, uint z) const
 {
@@ -256,25 +250,20 @@ uint Scene::GetVoxel(uint x, uint y, uint z) const
 
 uint Scene::AllocateBrick()
 {
-    uint8_t* b = (uint8_t*)MALLOC64(BRICK_SIZE3);
+    uint8_t* b = static_cast<uint8_t*>(MALLOC64(BRICK_SIZE3));
     memset(b, 0, BRICK_SIZE3);
     bricks.push_back(b);
-    return (uint)bricks.size() - 1;
+    return static_cast<uint>(bricks.size() - 1);
 }
 
-// ---------------------------------------------------------------------------
-// Scene constructor
-// ---------------------------------------------------------------------------
+
 Scene::Scene()
 {
-    coarseGrid = (uint*)MALLOC64(COARSE_SIZE3 * sizeof(uint));
+    coarseGrid = static_cast<uint*>(MALLOC64(COARSE_SIZE3 * sizeof(uint)));
     memset(coarseGrid, 0, COARSE_SIZE3 * sizeof(uint));
-
-    // credit: Thomas — zero out occupancy bitmap
     memset(occupancy, 0, sizeof(occupancy));
 
     bricks.clear();
-
     materials.fill(Material{});
 
     materials[MAT_MIRROR].type = MaterialType::Metal;
@@ -297,25 +286,25 @@ Scene::Scene()
         materials[i].roughness = 1.0f;
     }
 
-    VoxLoader::Load("assets/checkerboard_floor_256.vox", *this);
+    //VoxLoader::Load("assets/checkerboard_floor_256.vox", *this);
 
-    VoxelFactory::FlattenInstance(
-        *this,
-        0,
-        float3(128, 1, 128),
-        float3(-3.14159f / 2.0f, 0, 0),  // -90° around X to convert Z-up to Y-up
-        float3(1, 1, 1)
-    );
+    //VoxelFactory::FlattenInstance(
+    //    *this,
+    //    0,
+    //    float3(128, 1, 128),
+    //    float3(-3.14159f / 2.0f, 0, 0),
+    //    float3(1, 1, 1)
+    //);
 
     static float3 spawnMin = { 0.1f, 0.1f, 0.1f };
     static float3 spawnMax = { 0.9f, 0.9f, 0.9f };
     static float  spawnRadius = 0.01f;
 
-    for (int i = 0; i < 100; ++i)
+    for (int i = 0; i < 1000; ++i)
     {
         uint mat =
             MAT_RANDOM_START +
-            (uint)(RandomFloat() * (MAT_RANDOM_END - MAT_RANDOM_START));
+            static_cast<uint>(RandomFloat() * (MAT_RANDOM_END - MAT_RANDOM_START));
 
         spheres.push_back(Sphere{
             float3(
@@ -331,9 +320,6 @@ Scene::Scene()
     BuildSphereBVH();
 }
 
-// ---------------------------------------------------------------------------
-// Voxel setters
-// ---------------------------------------------------------------------------
 
 void Scene::Set(uint x, uint y, uint z, uint v)
 {
@@ -349,16 +335,17 @@ void Scene::Set(uint x, uint y, uint z, uint v)
         uint brickIndex = AllocateBrick();
         coarseGrid[gidx] = (brickIndex << 1) | 1;
         cell = coarseGrid[gidx];
-
-        SetOccupied(gidx); // credit: Thomas — occupancy bitmap
+        SetOccupied(gidx);
     }
 
-    bricks[cell >> 1][lx + ly * BRICK_SIZE + lz * BRICK_SIZE * BRICK_SIZE] = (uint8_t)v;
+    bricks[cell >> 1][lx + ly * BRICK_SIZE + lz * BRICK_SIZE * BRICK_SIZE] = static_cast<uint8_t>(v);
 }
 
 void Scene::SetVoxel(int x, int y, int z, uint value)
 {
-    if ((uint)x >= WORLDSIZE || (uint)y >= WORLDSIZE || (uint)z >= WORLDSIZE)
+    if (static_cast<uint>(x) >= WORLDSIZE ||
+        static_cast<uint>(y) >= WORLDSIZE ||
+        static_cast<uint>(z) >= WORLDSIZE)
         return;
 
     const uint cx = x >> BRICK_SHIFT;
@@ -371,8 +358,7 @@ void Scene::SetVoxel(int x, int y, int z, uint value)
     {
         uint newIndex = AllocateBrick();
         cell = (newIndex << 1) | 1;
-
-        SetOccupied(coarseIdx); // credit: Thomas — occupancy bitmap
+        SetOccupied(coarseIdx);
     }
 
     uint8_t* brick = bricks[cell >> 1];
@@ -380,55 +366,24 @@ void Scene::SetVoxel(int x, int y, int z, uint value)
     const uint ly = y & (BRICK_SIZE - 1);
     const uint lz = z & (BRICK_SIZE - 1);
 
-    brick[lx + ly * BRICK_SIZE + lz * BRICK_SIZE2] = (uint8_t)value;
+    brick[lx + ly * BRICK_SIZE + lz * BRICK_SIZE2] = static_cast<uint8_t>(value);
 }
 
-// ---------------------------------------------------------------------------
-// BuildSphereBVH
-//
-// Rebuilds both the BVH (from AoS) and the SOA (from AoS) in one call.
-// The SOA is always consistent with the BVH after this returns.
-// ---------------------------------------------------------------------------
 void Scene::BuildSphereBVH()
 {
     sphereBVHReady = false;
-
-    // Always rebuild the SOA so GetNormal/GetAlbedo are never reading stale data.
     sphereSOA.Rebuild(spheres);
+    sphereGrid.Build(spheres);
 
-    if (spheres.size() < 2) return;
-
-    g_spheres = spheres.data();
-
-    sphereBVH.Build(SphereAABB, (uint32_t)spheres.size());
-
-    sphereBVHReady = true;
+    // Also build BVH so you can A/B test
+    if (spheres.size() >= 2)
+    {
+        g_spheres = spheres.data();
+        sphereBVH.Build(SphereAABB, static_cast<uint32_t>(spheres.size()));
+        sphereBVHReady = true;
+    }
 }
 
-// Scalar brute-force fallback (used only when BVH is not ready).
-__forceinline static bool IntersectSphere(const Ray& ray, const Sphere& s, float& tHit)
-{
-    const float3 oc = ray.O - s.center;
-    const float  a = dot(ray.D, ray.D);
-    const float  b = 2.f * dot(oc, ray.D);
-    const float  c = dot(oc, oc) - s.radius * s.radius;
-    const float  disc = b * b - 4.f * a * c;
-
-    if (disc < 0.f) return false;
-
-    const float sqrtDisc = sqrtf(disc);
-    const float t0 = (-b - sqrtDisc) / (2.f * a);
-    const float t1 = (-b + sqrtDisc) / (2.f * a);
-    const float t = (t0 > 0.f) ? t0 : t1;
-
-    if (t <= 0.f) return false;
-    tHit = t;
-    return true;
-}
-
-// ---------------------------------------------------------------------------
-// DDA setup
-// ---------------------------------------------------------------------------
 
 __forceinline bool Scene::Setup3DDDA(Ray& ray, DDAState& state) const
 {
@@ -444,9 +399,9 @@ __forceinline bool Scene::Setup3DDDA(Ray& ray, DDAState& state) const
     static const float cellSize = 1.f / WORLDSIZE;
 
     state.step = make_int3(
-        1 - (int)ray.Dsign.x * 2,
-        1 - (int)ray.Dsign.y * 2,
-        1 - (int)ray.Dsign.z * 2
+        1 - static_cast<int>(ray.Dsign.x) * 2,
+        1 - static_cast<int>(ray.Dsign.y) * 2,
+        1 - static_cast<int>(ray.Dsign.z) * 2
     );
 
     const float3 posInGrid = float3(
@@ -461,9 +416,9 @@ __forceinline bool Scene::Setup3DDDA(Ray& ray, DDAState& state) const
         (ceilf(posInGrid.z) - ray.Dsign.z) * cellSize
     );
 
-    state.X = clamp((int)posInGrid.x, 0, WORLDSIZE - 1);
-    state.Y = clamp((int)posInGrid.y, 0, WORLDSIZE - 1);
-    state.Z = clamp((int)posInGrid.z, 0, WORLDSIZE - 1);
+    state.X = clamp(static_cast<int>(posInGrid.x), 0, WORLDSIZE - 1);
+    state.Y = clamp(static_cast<int>(posInGrid.y), 0, WORLDSIZE - 1);
+    state.Z = clamp(static_cast<int>(posInGrid.z), 0, WORLDSIZE - 1);
 
     state.tdelta.x = cellSize * state.step.x / ray.D.x;
     state.tdelta.y = cellSize * state.step.y / ray.D.y;
@@ -480,11 +435,6 @@ __forceinline bool Scene::Setup3DDDA(Ray& ray, DDAState& state) const
     return true;
 }
 
-// ---------------------------------------------------------------------------
-// TraverseDDA — single-loop DDA with coarse brick skip.
-//
-// Uses Thomas's occupancy bitmap for fast empty-brick rejection.
-// ---------------------------------------------------------------------------
 template<bool IsOcclusionRay>
 __forceinline bool Scene::TraverseDDA(
     Ray& ray,
@@ -494,7 +444,7 @@ __forceinline bool Scene::TraverseDDA(
 {
     DDAState s;
     if (!Setup3DDDA(ray, s)) return false;
-    s.axis = 1; // safe default — overwritten on first step
+    s.axis = 1;
 
     const bool startedInside = ray.inside;
 
@@ -505,10 +455,12 @@ __forceinline bool Scene::TraverseDDA(
         if constexpr (IsOcclusionRay)
             if (s.t >= ray.t) return false;
 
-        if (s.X >= (uint)WORLDSIZE || s.Y >= (uint)WORLDSIZE || s.Z >= (uint)WORLDSIZE)
+        if (s.X >= static_cast<uint>(WORLDSIZE) ||
+            s.Y >= static_cast<uint>(WORLDSIZE) ||
+            s.Z >= static_cast<uint>(WORLDSIZE))
             break;
 
-        // Coarse empty-brick skip using occupancy bitmap (credit: Thomas).
+        // Coarse empty-brick skip (credit: Thomas)
         {
             const uint cx = s.X >> BRICK_SHIFT;
             const uint cy = s.Y >> BRICK_SHIFT;
@@ -518,39 +470,39 @@ __forceinline bool Scene::TraverseDDA(
             if (!IsOccupied(coarseIdx))
             {
                 const int remX = (s.step.x > 0)
-                    ? int(BRICK_SIZE - (s.X & (BRICK_SIZE - 1)))
-                    : int((s.X & (BRICK_SIZE - 1)) + 1);
+                    ? static_cast<int>(BRICK_SIZE - (s.X & (BRICK_SIZE - 1)))
+                    : static_cast<int>((s.X & (BRICK_SIZE - 1)) + 1);
                 const int remY = (s.step.y > 0)
-                    ? int(BRICK_SIZE - (s.Y & (BRICK_SIZE - 1)))
-                    : int((s.Y & (BRICK_SIZE - 1)) + 1);
+                    ? static_cast<int>(BRICK_SIZE - (s.Y & (BRICK_SIZE - 1)))
+                    : static_cast<int>((s.Y & (BRICK_SIZE - 1)) + 1);
                 const int remZ = (s.step.z > 0)
-                    ? int(BRICK_SIZE - (s.Z & (BRICK_SIZE - 1)))
-                    : int((s.Z & (BRICK_SIZE - 1)) + 1);
+                    ? static_cast<int>(BRICK_SIZE - (s.Z & (BRICK_SIZE - 1)))
+                    : static_cast<int>((s.Z & (BRICK_SIZE - 1)) + 1);
 
-                const float txExit = s.tmax.x + float(remX - 1) * s.tdelta.x;
-                const float tyExit = s.tmax.y + float(remY - 1) * s.tdelta.y;
-                const float tzExit = s.tmax.z + float(remZ - 1) * s.tdelta.z;
+                const float txExit = s.tmax.x + static_cast<float>(remX - 1) * s.tdelta.x;
+                const float tyExit = s.tmax.y + static_cast<float>(remY - 1) * s.tdelta.y;
+                const float tzExit = s.tmax.z + static_cast<float>(remZ - 1) * s.tdelta.z;
 
                 if (txExit < tyExit)
                 {
                     if (txExit < tzExit)
                     {
-                        s.tmax.x += float(remX) * s.tdelta.x; s.X += s.step.x * remX; s.t = txExit; s.axis = 0;
+                        s.tmax.x += static_cast<float>(remX) * s.tdelta.x; s.X += s.step.x * remX; s.t = txExit; s.axis = 0;
                     }
                     else
                     {
-                        s.tmax.z += float(remZ) * s.tdelta.z; s.Z += s.step.z * remZ; s.t = tzExit; s.axis = 2;
+                        s.tmax.z += static_cast<float>(remZ) * s.tdelta.z; s.Z += s.step.z * remZ; s.t = tzExit; s.axis = 2;
                     }
                 }
                 else
                 {
                     if (tyExit < tzExit)
                     {
-                        s.tmax.y += float(remY) * s.tdelta.y; s.Y += s.step.y * remY; s.t = tyExit; s.axis = 1;
+                        s.tmax.y += static_cast<float>(remY) * s.tdelta.y; s.Y += s.step.y * remY; s.t = tyExit; s.axis = 1;
                     }
                     else
                     {
-                        s.tmax.z += float(remZ) * s.tdelta.z; s.Z += s.step.z * remZ; s.t = tzExit; s.axis = 2;
+                        s.tmax.z += static_cast<float>(remZ) * s.tdelta.z; s.Z += s.step.z * remZ; s.t = tzExit; s.axis = 2;
                     }
                 }
                 continue;
@@ -570,9 +522,9 @@ __forceinline bool Scene::TraverseDDA(
             {
                 if (startedInside)
                 {
-                    const int hx = (int)s.X - s.step.x;
-                    const int hy = (int)s.Y - s.step.y;
-                    const int hz = (int)s.Z - s.step.z;
+                    const int hx = static_cast<int>(s.X) - s.step.x;
+                    const int hy = static_cast<int>(s.Y) - s.step.y;
+                    const int hz = static_cast<int>(s.Z) - s.step.z;
                     if (hx >= 0 && hx < WORLDSIZE &&
                         hy >= 0 && hy < WORLDSIZE &&
                         hz >= 0 && hz < WORLDSIZE)
@@ -591,8 +543,6 @@ __forceinline bool Scene::TraverseDDA(
             }
         }
 
-        // Branchless DDA step: & instead of && avoids short-circuit branches.
-        // The compiler maps this to MINPS/CMOV on x86.
         const bool xLTy = s.tmax.x < s.tmax.y;
         const bool xLTz = s.tmax.x < s.tmax.z;
         const bool yLTz = s.tmax.y < s.tmax.z;
@@ -613,21 +563,11 @@ __forceinline bool Scene::TraverseDDA(
     return false;
 }
 
-// ---------------------------------------------------------------------------
-// FindNearest
-// ---------------------------------------------------------------------------
 void Scene::FindNearest(Ray& ray) const
 {
-    // ---------------------------------------------------------------------------
-    // Fast world-AABB rejection: if the ray misses the [0,1]^3 cube entirely,
-    // skip all DDA and sphere work and return a miss immediately.
-    // This saves Setup3DDDA + intersect_cube cost for every sky ray.
-    // Only runs when the camera is outside the world (the common case for
-    // wide-angle shots where most rays hit sky).
-    // ---------------------------------------------------------------------------
+    // Early out if the ray misses the world cube entirely
     if (!point_in_cube(ray.O))
     {
-        // Slab test against [0,1]^3
         const float tx1 = (0.f - ray.O.x) * ray.rD.x, tx2 = (1.f - ray.O.x) * ray.rD.x;
         const float ty1 = (0.f - ray.O.y) * ray.rD.y, ty2 = (1.f - ray.O.y) * ray.rD.y;
         const float tz1 = (0.f - ray.O.z) * ray.rD.z, tz2 = (1.f - ray.O.z) * ray.rD.z;
@@ -635,7 +575,6 @@ void Scene::FindNearest(Ray& ray) const
         const float tmax = min(min(max(tx1, tx2), max(ty1, ty2)), max(tz1, tz2));
         if (tmax < tmin || tmax < 0.f)
         {
-            // Ray misses the world cube — guaranteed sky hit.
             ray.t = 1e34f;
             ray.voxel = 0;
             ray.sphereIndex = -1;
@@ -648,37 +587,24 @@ void Scene::FindNearest(Ray& ray) const
     float nearestSphereT = 1e34f;
     int   nearestSphereIdx = -1;
 
-    if (sphereSOA.count >= 2 && sphereBVHReady)
+    if (sphereSOA.count > 0)
     {
-        const float3& D = ray.D;
-        const float   lenSq = D.x * D.x + D.y * D.y + D.z * D.z;
-        if (lenSq > 1e-10f)
+        if (useLegacyBVH && sphereBVHReady)
         {
             tinybvh::Ray bvhRay(
                 { ray.O.x, ray.O.y, ray.O.z },
-                { D.x, D.y, D.z }
+                { ray.D.x, ray.D.y, ray.D.z }
             );
             TraceSphereBVH(bvhRay);
             if (bvhRay.hit.t < 1e30f)
             {
                 nearestSphereT = bvhRay.hit.t;
-                nearestSphereIdx = (int)bvhRay.hit.prim;
+                nearestSphereIdx = static_cast<int>(bvhRay.hit.prim);
             }
         }
-    }
-    else if (sphereSOA.count > 0)
-    {
-        // Brute-force AVX8 fallback.
-        tinybvh::Ray bvhRay(
-            { ray.O.x, ray.O.y, ray.O.z },
-            { ray.D.x, ray.D.y, ray.D.z }
-        );
-        float t = nearestSphereT;
-        int   idx = IntersectSpheresAVX8(sphereSOA, bvhRay, t);
-        if (idx >= 0)
+        else if (sphereGrid.ready)
         {
-            nearestSphereT = t;
-            nearestSphereIdx = idx;
+            TraceSphereGrid(ray, nearestSphereT, nearestSphereIdx);
         }
     }
 
@@ -716,9 +642,6 @@ void Scene::FindNearest(Ray& ray) const
     }
 }
 
-// ---------------------------------------------------------------------------
-// IsOccluded
-// ---------------------------------------------------------------------------
 bool Scene::IsOccluded(Ray& ray) const
 {
     uint dummyMat = 0;

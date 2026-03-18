@@ -260,22 +260,13 @@ void Renderer::Tick(float deltaTime)
     // on the first stationary frame.
     if (cameraMoving) rayTableDirty = true;
 
-    // ── OPT 3: Rebuild ray direction table when camera comes to rest ────────
-    //
-    // Run the rebuild in parallel before the main pixel loop so every thread
-    // reads a fully-populated table during shading.  The rebuild only fires
-    // once per stop (rayTableDirty is cleared immediately after).
-    //
-    // Each entry stores the normalised primary-ray direction for the pixel
-    // centre.  Sub-pixel jitter is still applied during shading (see below),
-    // so temporal accumulation quality is unaffected.
     if (!cameraMoving && rayTableDirty)
     {
 #pragma omp parallel for schedule(static)
         for (int y = 0; y < SCRHEIGHT; y++)
             for (int x = 0; x < SCRWIDTH; x++)
                 rayDirTable[x + y * SCRWIDTH] =
-                camera.GetPrimaryRay((float)x + 0.5f, (float)y + 0.5f).D;
+                camera.GetPrimaryRay(static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f).D;
         rayTableDirty = false;
     }
 
@@ -295,7 +286,6 @@ void Renderer::Tick(float deltaTime)
         ResetAccumulator();
     }
 
-    // ── Main pixel loop — tile-based ────────────────────────────────────────
     // 16×16 tiles improve cache reuse: adjacent pixels in a tile share BVH
     // traversal state and read nearby memory.  OpenMP distributes whole tiles
     // across threads so each thread works a contiguous region of the screen.
@@ -329,13 +319,6 @@ void Renderer::Tick(float deltaTime)
                 // one GetPrimaryRay() call (which internally calls PaniniBaseDir()
                 // with atan/tan) with a table lookup + one GetPrimaryRay() call
                 // at a jittered pixel centre.
-                //
-                // The two paths produce identical visual output — the only
-                // difference is whether the trig happens every frame or once.
-                // OPT 3: ray direction table.
-                // Moving     → full jittered GetPrimaryRay every frame (reprojection needs it).
-                // Stationary → small jitter around pixel centre; avoids full per-pixel trig.
-                //
                 const float jx = BlueNoise(x, y, sampleCount);
                 const float jy = BlueNoise(y, x, sampleCount);
 
@@ -385,10 +368,6 @@ void Renderer::Tick(float deltaTime)
                             const float3 bot = lerp(h01, h11, fx);
                             float3 historySample = lerp(top, bot, fy);
 
-                            // Simple exponential blend — no neighbourhood clamp loop.
-                            // The 3×3 clamp was reading 8 extra history samples per pixel,
-                            // costing ~5% of frame time with negligible quality benefit for
-                            // a moving camera where accumulation resets anyway.
                             blended = 0.8f * historySample + 0.2f * sample;
                             sampleCountPerPixel[idx] = 6;
                         }
@@ -765,6 +744,12 @@ void Renderer::UI()
             scene.BuildSphereBVH();
             ResetAccumulator();
         }
+
+        if (ImGui::Checkbox("Use BVH (legacy)", &scene.useLegacyBVH))
+            ResetAccumulator();
+        ImGui::SameLine();
+        ImGui::TextDisabled(scene.useLegacyBVH ? "(SAH BVH2)" : "(uniform grid)");
+        ImGui::Spacing();
     }
 
     ImGui::End();
