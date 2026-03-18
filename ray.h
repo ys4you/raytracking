@@ -27,6 +27,9 @@ public:
 	bool inside = false;		// if true, ray started in voxel and t is at exit point
 	int materialIndex = -1;
 	int sphereIndex = -1;
+
+	int instanceIndex = -1;  // which VoxelInstance was hit (-1 = none)
+
 private:
 	// min3 is used in normal reconstruction.
 	__inline static float3 min3( const float3& a, const float3& b )
