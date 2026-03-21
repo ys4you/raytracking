@@ -8,6 +8,9 @@
 
 #include "PhysicsWorld.h"
 
+#include "SceneManager.h"
+#include "GameScenes.h"
+
 
 class material;
 struct SceneLights
@@ -83,7 +86,7 @@ namespace Tmpl8
 		}
 		void MouseWheel(float y) { y = 0; }
 		void KeyUp(int key) { key = 0; }
-		void KeyDown(int key) { key = 0; }
+		void KeyDown(int key);
 		int2 mousePos;
 		float3* accumulator = nullptr;
 		float3* history = nullptr;
@@ -116,6 +119,7 @@ namespace Tmpl8
 		SplineFollower cameraFollower;
 		bool useSplineCamera = false;
 		PhysicsWorld physics;
+		SceneManager sceneManager;
 
 	};
 } // namespace Tmpl8

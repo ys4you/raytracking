@@ -55,6 +55,9 @@ public:
     float  cachedSunHeight;
     float  cachedHdrBlend;
 
+    bool  skyCacheDirty = true;
+
+
 private:
 
     // ------------------------------------------------------------------
@@ -80,7 +83,6 @@ private:
     static constexpr int SKY_H = 256;    // must stay power of two
 
     std::vector<SkyPixel> skyCache;
-    bool  skyCacheDirty = true;
 
     // Dirty-flag threshold: only rebuild when timeOfDay has moved by more
     // than this amount.  Keeps rebuilds rare during fast animation.

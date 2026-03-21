@@ -49,7 +49,6 @@ struct VoxelInstance
 
         worldToLocal = localToWorld.Inverted();
 
-        // World-space AABB via Arvo's method
         float3 localMax = float3((float)sizeX, (float)sizeY, (float)sizeZ);
         float3 center = localMax * 0.5f;
         float3 half = center;   // localMin is (0,0,0)

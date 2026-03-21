@@ -50,6 +50,7 @@
     <ClCompile Include="VoxelFactory.cpp" />
     <ClCompile Include="template\Core\Animations\Spline.cpp" />
     <ClCompile Include="PhysicsBall.cpp" />
+    <ClCompile Include="SceneManager.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="renderer.h" />
@@ -120,6 +121,9 @@
     <ClInclude Include="template\Core\Animations\SplineFollower.h" />
     <ClInclude Include="PhysicsWorld.h" />
     <ClInclude Include="PhysicsBall.h" />
+    <ClInclude Include="GameScenes.h" />
+    <ClInclude Include="SceneManager.h" />
+    <ClInclude Include="SceneDef.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="template">

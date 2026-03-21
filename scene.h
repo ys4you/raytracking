@@ -31,6 +31,8 @@ enum MaterialID : uint
     MAT_RANDOM_END = 104,
     MAT_COUNT = 105
 };
+
+
 static constexpr int TOTAL_MATS = MAT_COUNT + 256;
 
 struct Material;
@@ -161,6 +163,18 @@ namespace Tmpl8
         {
             return materials[matID];
         }
+
+        void ClearWorld()
+        {
+            // Zero the coarse grid (no bricks referenced)
+            memset(coarseGrid, 0, COARSE_SIZE3 * sizeof(uint));
+            memset(occupancy, 0, sizeof(occupancy));
+
+            // Zero every allocated brick (reuse the memory, don't free)
+            for (auto* b : bricks)
+                memset(b, 0, BRICK_SIZE3);
+        }
+
 
         // ---- Data ----
         uint* coarseGrid;
