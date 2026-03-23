@@ -3,6 +3,8 @@
 
 #include "template.h"
 
+#include "Core/Audio/AudioSystem.h"
+
 #pragma comment( linker, "/subsystem:windows /ENTRY:mainCRTStartup" )
 
 using namespace Tmpl8;
@@ -113,6 +115,7 @@ static void ApplyUnityStyle()
 // Application entry point
 void main()
 {
+	AudioSystem::Get().Init();
 	// set fp flags: denormalize & flush to zero
 	// Thanks Caden Parker
 	_mm_setcsr( _mm_getcsr() | (_MM_FLUSH_ZERO_ON | _MM_DENORMALS_ZERO_ON) );
@@ -228,6 +231,7 @@ void main()
 		}
 		if (!running) break;
 	}
+	AudioSystem::Get().Shutdown();
 	// close down
 	app->Shutdown();
 	delete app;

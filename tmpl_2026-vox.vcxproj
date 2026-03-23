@@ -141,6 +141,7 @@
     <ClCompile Include="lib\imgui\imgui_impl_opengl3.cpp" />
     <ClCompile Include="lib\imgui\imgui_tables.cpp" />
     <ClCompile Include="lib\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="template\Core\Audio\AudioSystem.cpp" />
     <ClCompile Include="template\Core\Material.cpp" />
     <ClCompile Include="template\opencl.cpp" />
     <ClCompile Include="template\opengl.cpp" />
@@ -167,6 +168,7 @@
     <ClInclude Include="Sphere.h" />
     <ClInclude Include="template\Core\Animations\Spline.h" />
     <ClInclude Include="template\Core\Animations\SplineFollower.h" />
+    <ClInclude Include="template\Core\Audio\AudioSystem.h" />
     <ClInclude Include="template\Core\Lighting\AreaLight.h" />
     <ClInclude Include="camera.h" />
     <ClInclude Include="template\Core\Lighting\DirectionalLight.h" />

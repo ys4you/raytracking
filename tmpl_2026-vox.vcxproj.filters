@@ -51,6 +51,7 @@
     <ClCompile Include="template\Core\Animations\Spline.cpp" />
     <ClCompile Include="PhysicsBall.cpp" />
     <ClCompile Include="SceneManager.cpp" />
+    <ClCompile Include="template\Core\Audio\AudioSystem.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="renderer.h" />
@@ -124,6 +125,7 @@
     <ClInclude Include="GameScenes.h" />
     <ClInclude Include="SceneManager.h" />
     <ClInclude Include="SceneDef.h" />
+    <ClInclude Include="template\Core\Audio\AudioSystem.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="template">
