@@ -7,6 +7,7 @@
 #include <random>
 #include <immintrin.h>
 
+
 const Sphere* Scene::g_spheres = nullptr;
 
 static void SphereAABB(uint32_t idx, tinybvh::bvhvec3& mn, tinybvh::bvhvec3& mx)
@@ -216,6 +217,11 @@ Scene::Scene()
     materials[MAT_GREEN].albedo = { 0.f, 1.f, 0.f };
     materials[MAT_GREEN].roughness = 1.0f;
 
+    materials[MAT_LAMBERTIAN_WHITE].type = MaterialType::Emissive;
+    materials[MAT_LAMBERTIAN_WHITE].albedo = { 1.0f, 1.0f, 1.0f };
+    materials[MAT_LAMBERTIAN_WHITE].emission = { 1.0f, 1.0f, 1.0f };
+    materials[MAT_LAMBERTIAN_WHITE].emissionStr = 3.0f;
+
     for (uint i = MAT_RANDOM_START; i < MAT_COUNT; i++)
     {
         materials[i].type = MaterialType::Lambertian;
@@ -223,27 +229,8 @@ Scene::Scene()
         materials[i].roughness = 1.0f;
     }
 
-    //VoxLoader::Load("assets/street.vox", *this);
-
-    //VoxelFactory::CreateInstance(*this, 0,
-    //    float3(128, 0, 128),   // position in grid coords
-    //    float3(46, 90, 80),      // 90° Y rotation in degrees
-    //    float3(2 * 64, 2 * 64, 2 * 64));
-
-
-    //static float3 spawnMin = { 0.1f, 0.1f, 0.1f };
-    //static float3 spawnMax = { 0.9f, 0.9f, 0.9f };
-    //static float  spawnRadius = 0.01f;
-    //for (int i = 0; i < 10; ++i)
-    //{
-    //    uint mat = MAT_RANDOM_START + (uint)(RandomFloat() * (MAT_RANDOM_END - MAT_RANDOM_START));
-    //    spheres.push_back(Sphere{
-    //        float3(spawnMin.x + RandomFloat() * (spawnMax.x - spawnMin.x),
-    //               spawnMin.y + RandomFloat() * (spawnMax.y - spawnMin.y),
-    //               spawnMin.z + RandomFloat() * (spawnMax.z - spawnMin.z)),
-    //        spawnRadius, mat });
-    //}
     BuildSphereBVH();
+
 }
 
 

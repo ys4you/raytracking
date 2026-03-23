@@ -1,5 +1,4 @@
 ﻿#pragma once
-
 /// @brief  A placed copy of a VoxelObject in the world, with its own transform.
 ///
 /// Stores the raw transform parameters (position, rotation, scale, pivot)
@@ -12,7 +11,7 @@ struct VoxelInstance
     float3 position;
     float3 rotation;    // Euler angles in radians (Y, X, Z order)
     float3 scale;
-    float3 pivot;
+    float3 pivot;       // in LOCAL voxel units (e.g. half-size for centre rotation)
 
     // ---- Precomputed data (call BuildMatrices to refresh) ----
     mat4   localToWorld;
@@ -23,7 +22,6 @@ struct VoxelInstance
     bool   matricesDirty = true;
 
     VoxelInstance() = default;
-
     VoxelInstance(int mIndex, float3 pos, float3 rot, float3 s, float3 p = float3(0, 0, 0))
         : modelIndex(mIndex), position(pos), rotation(rot), scale(s), pivot(p),
         matricesDirty(true)
@@ -34,13 +32,15 @@ struct VoxelInstance
     ///         sizeX/Y/Z are the dimensions of the referenced VoxelObject.
     void BuildMatrices(uint sizeX, uint sizeY, uint sizeZ)
     {
-        // template mat4 is row-major:
-        //   row0=[0..3], row1=[4..7], row2=[8..11], row3=[12..15]
-        //   translation lives in cells 3, 7, 11
-
-        // localToWorld = T(position) * T(pivot) * Ry * Rx * Rz * S * T(-pivot)
+        // localToWorld = T(position) * Ry * Rx * Rz * S * T(-pivot)
+        //
+        // T(-pivot)  : shift so pivot point is at local origin
+        // S          : scale from local voxel units to world units
+        // Ry*Rx*Rz   : rotate in world space
+        // T(position): place in world
+        //
+        // pivot is in LOCAL voxel units (e.g. (32,32,32) for a 64^3 object centre)
         localToWorld = mat4::Translate(position)
-            * mat4::Translate(pivot)
             * mat4::RotateY(rotation.y)
             * mat4::RotateX(rotation.x)
             * mat4::RotateZ(rotation.z)
@@ -50,32 +50,31 @@ struct VoxelInstance
         worldToLocal = localToWorld.Inverted();
 
         float3 localMax = float3((float)sizeX, (float)sizeY, (float)sizeZ);
-        float3 center = localMax * 0.5f;
-        float3 half = center;   // localMin is (0,0,0)
 
-        float3 wCenter = localToWorld.TransformPoint(center);
+        // Transform all 8 corners of the local AABB to get tight world AABB
+        float3 corners[8] = {
+            float3(0, 0, 0),
+            float3(localMax.x, 0, 0),
+            float3(0, localMax.y, 0),
+            float3(0, 0, localMax.z),
+            float3(localMax.x, localMax.y, 0),
+            float3(localMax.x, 0, localMax.z),
+            float3(0, localMax.y, localMax.z),
+            localMax
+        };
 
-        // Row-major: row 0 = [0,1,2], row 1 = [4,5,6], row 2 = [8,9,10]
-        float3 wHalf;
-        wHalf.x = fabsf(localToWorld[0]) * half.x
-            + fabsf(localToWorld[1]) * half.y
-            + fabsf(localToWorld[2]) * half.z;
-        wHalf.y = fabsf(localToWorld[4]) * half.x
-            + fabsf(localToWorld[5]) * half.y
-            + fabsf(localToWorld[6]) * half.z;
-        wHalf.z = fabsf(localToWorld[8]) * half.x
-            + fabsf(localToWorld[9]) * half.y
-            + fabsf(localToWorld[10]) * half.z;
-
-        worldAABBmin = wCenter - wHalf;
-        worldAABBmax = wCenter + wHalf;
+        worldAABBmin = float3(1e30f);
+        worldAABBmax = float3(-1e30f);
+        for (int i = 0; i < 8; i++)
+        {
+            float3 w = localToWorld.TransformPoint(corners[i]);
+            worldAABBmin = fminf(worldAABBmin, w);
+            worldAABBmax = fmaxf(worldAABBmax, w);
+        }
 
         // Pre-transform the 6 axis-aligned face normals to world space.
         // Normal transform = transpose of inverse's upper-3x3.
         // Row-major (M^-1)^T * n => read COLUMNS of worldToLocal:
-        //   result.x = wTL[0]*n.x + wTL[4]*n.y + wTL[8]*n.z
-        //   result.y = wTL[1]*n.x + wTL[5]*n.y + wTL[9]*n.z
-        //   result.z = wTL[2]*n.x + wTL[6]*n.y + wTL[10]*n.z
         const float3 localN[6] = {
             { 1, 0, 0}, {-1, 0, 0},
             { 0, 1, 0}, { 0,-1, 0},

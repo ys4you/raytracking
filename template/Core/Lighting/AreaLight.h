@@ -1,4 +1,12 @@
 #pragma once
+#include <xmmintrin.h>
+
+inline float rsqrt(float x)
+{
+    __m128 a = _mm_set_ss(x);
+    __m128 r = _mm_rsqrt_ss(a);
+    return _mm_cvtss_f32(r);
+}
 
 struct AreaLight
 {
@@ -29,53 +37,52 @@ inline float3 IlluminateArea(
     const ShadingPoint& sp,
     const Scene& scene)
 {
-	float3 result(0);
-    int samples = light.uSteps * light.vSteps;
+    constexpr float EPS = 0.05f;
 
-    float invU = 1.0f / light.uSteps;
-    float invV = 1.0f / light.vSteps;
+    float3 result(0.0f);
 
-    for (int v = 0; v < light.vSteps; ++v)
+    constexpr int samples = 4;
+
+    for (int i = 0; i < samples; ++i)
     {
-        for (int u = 0; u < light.uSteps; ++u)
-        {
-	        constexpr float EPS = 0.05f;
-	        // sample position on light
-            const float fu = (u + 0.5f) * invU;
-            const float fv = (v + 0.5f) * invV;
+        float fu = RandomFloat();
+        float fv = RandomFloat();
 
-            float3 lightPos =
-                light.corner +
-                light.edge1 * fu +
-                light.edge2 * fv;
+        float3 lightPos =
+            light.corner +
+            light.edge1 * fu +
+            light.edge2 * fv;
 
-            float3 L = lightPos - sp.position;
+        float3 L = lightPos - sp.position;
 
-            float dist2 = dot(L, L);
-            float dist = sqrt(dist2);
+        float dist2 = dot(L, L);
 
-            float3 Ldir = L / dist;
+        if (dist2 <= 1e-6f)
+            continue;
 
-            // one-sided emission
-            if (dot(light.normal, -Ldir) <= 0.0f)
-                continue;
+        float invDist = rsqrt(dist2);
+        float3 Ldir = L * invDist;
 
-            Ray shadowRay(
-                sp.position + sp.normal * EPS,
-                Ldir,
-                dist - EPS
-            );
+        if (dot(light.normal, -Ldir) <= 0.0f)
+            continue;
 
-            if (scene.IsOccluded(shadowRay))
-                continue;
+        float ndotl = dot(sp.normal, Ldir);
+        if (ndotl <= 0.0f)
+            continue;
 
-            const float ndotl = max(0.0f, dot(sp.normal, Ldir));
+        Ray shadowRay(
+            sp.position + sp.normal * EPS,
+            Ldir,
+            sqrt(dist2) - EPS // keep this simple & safe
+        );
 
-            float attenuation = 1.0f / dist2;
+        if (scene.IsOccluded(shadowRay))
+            continue;
 
-            result += light.color * ndotl * attenuation;
-        }
+        float attenuation = invDist * invDist;
+
+        result += light.color * (ndotl * attenuation);
     }
 
-    return result / static_cast<float>(samples);
+    return result * (1.0f / samples);
 }

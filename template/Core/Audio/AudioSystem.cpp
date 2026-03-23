@@ -1,4 +1,28 @@
 #include "template.h"
+
+#ifndef CP_UTF8
+#define CP_UTF8 65001
+#endif
+
+extern "C" {
+    __declspec(dllimport) int __stdcall WideCharToMultiByte(
+        unsigned int CodePage, unsigned long dwFlags,
+        const wchar_t* lpWideCharStr, int cchWideChar,
+        char* lpMultiByteStr, int cbMultiByte,
+        const char* lpDefaultChar, int* lpUsedDefaultChar);
+    __declspec(dllimport) int __stdcall MultiByteToWideChar(
+        unsigned int CodePage, unsigned long dwFlags,
+        const char* lpMultiByteStr, int cbMultiByte,
+        wchar_t* lpWideCharStr, int cchWideChar);
+}
+
+// Disable backends you don't have / don't need
+#define MA_NO_JACK
+#define MA_NO_RUNTIME_LINKING
+
+#define MINIAUDIO_IMPLEMENTATION
+#include "miniaudio.h"
+
 #include "AudioSystem.h"
 #include <iostream>
 

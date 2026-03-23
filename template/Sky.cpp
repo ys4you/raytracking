@@ -17,7 +17,7 @@ Sky::Sky()
     // triggers a heap allocation inside the render loop.
     skyCache.resize(SKY_W * SKY_H);
 
-    bool ok = hdrSky.Load("assets/sky.hdr");
+    bool ok = hdrSky.Load("assets/order_sky.hdr");
     if (!ok)
         printf("HDR load failed: %s\n", stbi_failure_reason());
 }

@@ -7,16 +7,11 @@
 #include <immintrin.h>
 
 
-// -----------------------------------------------------------
-// Trace
-// -----------------------------------------------------------
 float3 Renderer::Trace(Ray& ray, int depth, int, int)
 {
     constexpr int MAX_DEPTH = 5;
-
     if (depth >= MAX_DEPTH)
         return float3(0, 0, 0);
-
     if (depth >= 2)
     {
         constexpr float surviveP = 0.75f;
@@ -26,19 +21,23 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
 
     scene.FindNearest(ray);
 
-    if (ray.voxel == 0 && ray.sphereIndex < 0)
+    // ── Miss check ────────────────────────────────────────────
+    if (ray.voxel == 0 && ray.sphereIndex < 0 && ray.instanceIndex < 0)
         return sky.GetSkyColor(ray.D);
 
+    // ── Material lookup ───────────────────────────────────────
     const Material* matPtr = nullptr;
-
     if (ray.sphereIndex >= 0)
         matPtr = &scene.GetSphereMat((uint)scene.sphereSOA.material[ray.sphereIndex]);
+    else if (ray.instanceIndex >= 0 && ray.voxel > 0)
+        matPtr = &scene.GetMat(ray.voxel);
     else if (ray.voxel > 0)
         matPtr = &scene.GetMat(ray.materialIndex);
 
-    if (!matPtr) return float3(1, 0, 1);
+    if (!matPtr) return sky.GetSkyColor(ray.D);
     const Material& mat = *matPtr;
 
+    // ── Fast sphere shading (LOD optimisation) ────────────────
     if (fastSphereShading && ray.sphereIndex >= 0 &&
         static_cast<int>(scene.spheres.size()) >= fastSphereThreshold)
     {
@@ -55,6 +54,7 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
         return mat.albedo * (fastSphereAmbient + (1.0f - fastSphereAmbient) * ndotl);
     }
 
+    // ── Shading point ─────────────────────────────────────────
     ShadingPoint sp;
     sp.position = ray.IntersectionPoint();
     sp.normal = ray.GetNormal(scene);
@@ -63,6 +63,7 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
     if (debugNormals)
         return 0.5f * (sp.normal + float3(1.0f));
 
+    // ── Material shading ──────────────────────────────────────
     switch (mat.type)
     {
     case MaterialType::Lambertian:
@@ -75,7 +76,6 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
         color *= mat.albedo;
         return color;
     }
-
     case MaterialType::Metal:
     {
         float3 N = sp.normal;
@@ -85,7 +85,6 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
         Ray reflectedRay(sp.position + N * EPSILON, R);
         return Trace(reflectedRay, depth + 1) * mat.albedo;
     }
-
     case MaterialType::Dielectric:
     {
         float3 N = sp.normal;
@@ -106,15 +105,12 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
             return Trace(refractedRay, depth + 1);
         }
     }
-
     case MaterialType::Emissive:
         return mat.emission * mat.emissionStr;
     }
 
-    return float3(1, 0, 1);
+    return sky.GetSkyColor(ray.D);
 }
-
-
 // -----------------------------------------------------------
 // Init
 // -----------------------------------------------------------
@@ -231,6 +227,16 @@ void Renderer::Tick(float deltaTime)
     {
         scene.BuildSphereBVH();
         ResetAccumulator();
+    }
+
+    // ── Per-frame scene logic (animation, voxel re-stamping, etc.) ──
+    // Runs BEFORE the OpenMP pixel loop — must not overlap with ray tracing.
+    if (sceneManager.HasActive() && sceneManager.Active().tickCallback)
+    {
+        sceneManager.Active().tickCallback(
+            sceneManager.Active(), scene, deltaTime,
+            [this]() { ResetAccumulator(); }
+        );
     }
 
     constexpr int TILE = 16;
@@ -400,6 +406,7 @@ void Renderer::UI()
 
     // ── Scene Manager (always at top) ─────────────────────────────────
     sceneManager.UI(scene, camera, sky, lights, [this]() { ResetAccumulator(); });
+
 
     UIStats();
 

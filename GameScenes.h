@@ -4,11 +4,234 @@
 // ============================================================
 #include "SceneManager.h"
 
+
 namespace GameScenes
 {
 
 	// ============================================================
-	// Helper: Sphere Spawner UI — reusable across scenes
+	// Shared state for all showcase scenes.
+	// Persists across scene switches — rotation, tilt, and speed
+	// carry over seamlessly when transitioning between scenes.
+	// ============================================================
+
+	struct ShowcaseRotation
+	{
+		float angleX = 0.0f;
+		float angleY = 0.0f;
+		float angleZ = 0.0f;
+		float speedX = 0.12f;   // slow tumble
+		float speedY = 0.25f;   // primary spin axis
+		float speedZ = 0.08f;   // subtle roll
+
+		void Tick(float deltaTimeMs)
+		{
+			float dt = deltaTimeMs * 0.001f;
+			angleX += speedX * dt;
+			angleY += speedY * dt;
+			angleZ += speedZ * dt;
+			if (angleX > 2.0f * PI) angleX -= 2.0f * PI;
+			if (angleY > 2.0f * PI) angleY -= 2.0f * PI;
+			if (angleZ > 2.0f * PI) angleZ -= 2.0f * PI;
+		}
+
+		float3 GetRotation() const
+		{
+			return float3(angleX, angleY, angleZ);
+		}
+	};
+
+	inline std::shared_ptr<ShowcaseRotation>& SharedRotation()
+	{
+		static auto s = std::make_shared<ShowcaseRotation>();
+		return s;
+	}
+
+
+	// ============================================================
+	// Shared showcase setup — sky, camera, lights, callbacks.
+	// Each showcase scene calls this, then adds its own voxObject.
+	// ============================================================
+
+	inline void SetupShowcase(SceneDef& s)
+	{
+		// ── Camera — gallery viewing angle ────────────────────
+		s.camPos = float3(0.5f, 0.46f, 0.25f);
+		s.camTarget = float3(0.5f, 0.45f, 0.5f);
+
+		// ── Sky — let the coral pink HDR (order_sky.hdr) shine through ──
+		// Low sun intensity so the procedural layer doesn't overpower
+		// the HDR. Warm coral sun colour blends with the HDR gradient.
+		s.sky.sunDir = normalize(float3(0.2f, -0.5f, 0.3f));
+		s.sky.sunColor = float3(1.0f, 0.85f, 0.8f);   // warm coral
+		s.sky.sunIntensity = 1.2f;
+		s.sky.timeOfDay = 0.3f;
+		s.sky.animate = false;
+
+		// Object centre (approx) — lights aim here
+		const float3 objC = float3(0.5f, 0.45f, 0.5f);
+
+		// ── Overhead — soft, diffused, white-cube gallery feel ──
+		// Sourceless, bright, no hard shadows
+		PointLight overhead;
+		overhead.position = float3(0.5f, 0.85f, 0.5f);
+		overhead.color = float3(0.9f, 0.88f, 0.85f);  // Pearl White warmth
+		overhead.enabled = true;
+		s.pointLights.push_back(overhead);
+
+		// ── Front — even wash, slightly coral-tinted ──────────
+		PointLight front;
+		front.position = float3(0.5f, 0.45f, 0.1f);
+		front.color = float3(0.5f, 0.48f, 0.46f);
+		front.enabled = true;
+		s.pointLights.push_back(front);
+
+		// ── Left fill — muted teal accent #8CB8B0 ────────────
+		PointLight leftFill;
+		leftFill.position = float3(0.1f, 0.5f, 0.5f);
+		leftFill.color = float3(0.22f, 0.29f, 0.28f);  // Muted Teal
+		leftFill.enabled = true;
+		s.pointLights.push_back(leftFill);
+
+		// ── Right fill — pale lavender accent #C8B8D8 ─────────
+		PointLight rightFill;
+		rightFill.position = float3(0.9f, 0.5f, 0.5f);
+		rightFill.color = float3(0.25f, 0.22f, 0.3f);   // Pale Lavender
+		rightFill.enabled = true;
+		s.pointLights.push_back(rightFill);
+
+		// ── Below — very subtle uplight, prevents pure black ──
+		PointLight below;
+		below.position = float3(0.5f, 0.15f, 0.5f);
+		below.color = float3(0.15f, 0.14f, 0.13f);
+		below.enabled = true;
+		s.pointLights.push_back(below);
+
+		// ── Behind — rim catch, desaturated blue #7898B8 ──────
+		PointLight behind;
+		behind.position = float3(0.5f, 0.5f, 0.9f);
+		behind.color = float3(0.15f, 0.19f, 0.23f);    // Desat. Blue
+		behind.enabled = true;
+		s.pointLights.push_back(behind);
+
+		// ── Shared tick and UI callbacks ───────────────────────
+		auto rot = SharedRotation();
+
+		s.tickCallback = [rot](SceneDef& def, Tmpl8::Scene& scene,
+			float deltaTime, std::function<void()> resetAcc)
+			{
+				if (scene.voxelInstances.empty()) return;
+
+				rot->Tick(deltaTime);
+				auto& inst = scene.voxelInstances[0];
+				inst.rotation = rot->GetRotation();
+				inst.matricesDirty = true;
+
+				scene.RebuildDirtyInstances();
+				if (resetAcc) resetAcc();
+			};
+
+		s.uiCallback = [rot](SceneDef& def, Tmpl8::Scene& scene,
+			std::function<void()> resetAcc)
+			{
+				if (ImGui::CollapsingHeader("Showcase Settings"))
+				{
+					ImGui::SliderFloat("Speed X", &rot->speedX, 0.0f, 1.0f, "%.2f rad/s");
+					ImGui::SliderFloat("Speed Y", &rot->speedY, 0.0f, 1.0f, "%.2f rad/s");
+					ImGui::SliderFloat("Speed Z", &rot->speedZ, 0.0f, 1.0f, "%.2f rad/s");
+				}
+			};
+	}
+
+
+	// ============================================================
+	// 01 CUBE — white display cube
+	// ============================================================
+
+	inline SceneDef CubeShowcase()
+	{
+		SceneDef s;
+		s.name = "01 CUBE";
+		SetupShowcase(s);
+
+		s.voxObjects.push_back({
+			"assets/Showcase/display_cube.vox",
+			float3(256, 230, 256),
+			float3(0, 0, 0),
+			float3(1, 1, 1)
+			});
+
+		return s;
+	}
+
+
+	// ============================================================
+	// 02 MENGER — Menger sponge fractal (dim 2.7268)
+	// ============================================================
+
+	inline SceneDef MengerShowcase()
+	{
+		SceneDef s;
+		s.name = "02 MENGER";
+		SetupShowcase(s);
+
+		s.voxObjects.push_back({
+			"assets/Showcase/menger_sponge.vox",
+			float3(256, 235, 256),
+			float3(0, 0, 0),
+			float3(1, 1, 1)
+			});
+
+		return s;
+	}
+
+
+	// ============================================================
+	// Order Sector — Side Order main environment
+	// ============================================================
+
+	inline SceneDef OrderSector()
+	{
+		SceneDef s;
+		s.name = "Order Sector";
+
+		s.camPos = float3(0.15f, 0.25f, 0.15f);
+		s.camTarget = float3(0.5f, 0.3f, 0.5f);
+
+		s.sky.sunDir = normalize(float3(0.2f, -0.5f, 0.3f));
+		s.sky.sunColor = float3(1.0f, 0.75f, 0.7f);
+		s.sky.sunIntensity = 1.4f;
+		s.sky.timeOfDay = 0.3f;
+		s.sky.animate = false;
+
+		const float3 R0 = float3(0, 0, 0);
+
+		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(67, 4, 67),   R0, float3(1,1,1) });
+		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(193, 4, 67),  R0, float3(1,1,1) });
+		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(319, 4, 67),  R0, float3(1,1,1) });
+		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(445, 4, 67),  R0, float3(1,1,1) });
+
+		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(67, 4, 193),  R0, float3(1,1,1) });
+		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(193, 4, 193), R0, float3(1,1,1) });
+		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(319, 4, 193), R0, float3(1,1,1) });
+		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(445, 4, 193), R0, float3(1,1,1) });
+
+		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(67, 4, 319),  R0, float3(1,1,1) });
+		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(193, 4, 319), R0, float3(1,1,1) });
+		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(319, 4, 319), R0, float3(1,1,1) });
+		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(445, 4, 319), R0, float3(1,1,1) });
+
+		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(67, 4, 445),  R0, float3(1,1,1) });
+		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(193, 4, 445), R0, float3(1,1,1) });
+		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(319, 4, 445), R0, float3(1,1,1) });
+		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(445, 4, 445), R0, float3(1,1,1) });
+
+		s.uiCallback = nullptr;
+		return s;
+	}
+
+
+	// ============================================================
+	// Sphere Spawner UI helper
 	// ============================================================
 	inline void SphereSpawnerUI(SceneDef& def, Tmpl8::Scene& scene, std::function<void()> resetAcc)
 	{
@@ -17,17 +240,14 @@ namespace GameScenes
 
 		SpawnerState& sp = def.spawner;
 
-		// ── Spawn range ────────────────────────────────────────
 		ImGui::DragFloat3("Min", &sp.rangeMin.x, 0.01f, 0.0f, 1.0f, "%.2f");
 		ImGui::DragFloat3("Max", &sp.rangeMax.x, 0.01f, 0.0f, 1.0f, "%.2f");
 		sp.rangeMin.x = min(sp.rangeMin.x, sp.rangeMax.x - 0.01f);
 		sp.rangeMin.y = min(sp.rangeMin.y, sp.rangeMax.y - 0.01f);
 		sp.rangeMin.z = min(sp.rangeMin.z, sp.rangeMax.z - 0.01f);
 
-		// ── Radius ─────────────────────────────────────────────
 		ImGui::SliderFloat("Radius", &sp.radius, 0.005f, 0.2f, "%.3f");
 
-		// ── Material selector with color preview ───────────────
 		struct MatOption { const char* name; uint id; float3 color; };
 		static const MatOption matOpts[] =
 		{
@@ -57,7 +277,6 @@ namespace GameScenes
 			ImGui::EndCombo();
 		}
 
-		// ── Count selector ─────────────────────────────────────
 		ImGui::Spacing();
 		static const char* countLabels[] = { "1", "10", "100", "1000" };
 
@@ -74,7 +293,6 @@ namespace GameScenes
 			if (active) ImGui::PopStyleColor();
 		}
 
-		// ── Spawn / Clear buttons ──────────────────────────────
 		ImGui::Spacing();
 		float halfW = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
 
@@ -106,13 +324,11 @@ namespace GameScenes
 			if (resetAcc) resetAcc();
 		}
 
-		// ── Sphere list with individual delete ──────────────────
 		int sphereCount = (int)scene.spheres.size();
 		if (sphereCount > 0 && ImGui::TreeNode("Spheres##list"))
 		{
 			ImGui::Text("%d sphere%s", sphereCount, sphereCount == 1 ? "" : "s");
 
-			// Only show individual entries for manageable counts
 			int deleteIdx = -1;
 			int showMax = min(sphereCount, 200);
 
@@ -122,14 +338,13 @@ namespace GameScenes
 			for (int i = 0; i < showMax; i++)
 			{
 				ImGui::PushID(i);
-				auto& s = scene.spheres[i];
+				auto& sph = scene.spheres[i];
 
-				// Compact single-line display
 				ImGui::Text("#%d", i);
 				ImGui::SameLine(40);
 				ImGui::TextDisabled("(%.2f, %.2f, %.2f)  r=%.3f  m=%u",
-					s.center.x, s.center.y, s.center.z,
-					s.radius, s.material);
+					sph.center.x, sph.center.y, sph.center.z,
+					sph.radius, sph.material);
 				ImGui::SameLine(ImGui::GetContentRegionAvail().x + ImGui::GetCursorPosX() - 20);
 				if (ImGui::SmallButton("X"))
 					deleteIdx = i;
@@ -146,7 +361,6 @@ namespace GameScenes
 			ImGui::TreePop();
 		}
 
-		// ── BVH mode toggle ────────────────────────────────────
 		ImGui::Spacing();
 		if (ImGui::Checkbox("Use BVH (legacy)", &scene.useLegacyBVH))
 		{
@@ -159,13 +373,13 @@ namespace GameScenes
 
 
 	// ============================================================
-	// Scene definitions
+	// Spheres — sphere stress test
 	// ============================================================
 
 	inline SceneDef ThousandSpheres()
 	{
 		SceneDef s;
-		s.name = "ThousandSpheres";
+		s.name = "Spheres";
 
 		s.camPos = float3(0.5f, 0.5f, -0.5f);
 		s.camTarget = float3(0.5f, 0.3f, 0.5f);
@@ -175,7 +389,6 @@ namespace GameScenes
 		s.sky.sunIntensity = 2.5f;
 		s.sky.timeOfDay = 0.25f;
 
-		// Pre-populate 1000 random spheres
 		for (int i = 0; i < 1000; i++)
 		{
 			uint mat = MAT_RANDOM_START +
@@ -189,7 +402,6 @@ namespace GameScenes
 				});
 		}
 
-		// Default spawner settings for this scene
 		s.spawner.radius = 0.01f;
 
 		PointLight pl;
@@ -207,53 +419,16 @@ namespace GameScenes
 	}
 
 
-	inline SceneDef TestScene()
-	{
-		SceneDef s;
-		s.name = "Test";
-
-		s.camPos = float3(0.5f, 0.8f, -0.5f);
-		s.camTarget = float3(0.5f, 0.2f, 0.5f);
-
-		s.sky.sunDir = normalize(float3(-0.3f, -0.8f, 0.5f));
-		s.sky.sunColor = float3(1.0f, 1.0f, 0.95f);
-		s.sky.sunIntensity = 3.0f;
-		s.sky.timeOfDay = 0.25f;
-
-		s.spheres.push_back({ float3(0.5f, 0.5f, 0.5f), 0.1f,  MAT_DIELECTRIC });
-		s.spheres.push_back({ float3(0.3f, 0.4f, 0.4f), 0.07f, MAT_MIRROR });
-
-		PointLight overhead;
-		overhead.position = float3(0.5f, 0.9f, 0.5f);
-		overhead.color = float3(1, 1, 1);
-		overhead.enabled = true;
-		s.pointLights.push_back(overhead);
-
-		SpotLight spot;
-		spot.position = float3(0.2f, 0.7f, 0.2f);
-		spot.direction = normalize(float3(0.3f, -1.0f, 0.3f));
-		spot.color = float3(0.8f, 0.85f, 1.0f);
-		spot.spotAngleDeg = 35.0f;
-		spot.enabled = true;
-		s.spotLights.push_back(spot);
-
-		s.uiCallback = [](SceneDef& def, Tmpl8::Scene& scene, std::function<void()> resetAcc)
-			{
-				if (ImGui::TreeNode("Test Scene"))
-				{
-					ImGui::Text("Spheres: %d", (int)scene.spheres.size());
-					ImGui::TreePop();
-				}
-			};
-
-		return s;
-	}
-
+	// ============================================================
+	// Register all scenes
+	// ============================================================
 
 	inline void RegisterAllScenes(SceneManager& mgr)
 	{
+		mgr.AddScene(CubeShowcase());
+		mgr.AddScene(MengerShowcase());
+		mgr.AddScene(OrderSector());
 		mgr.AddScene(ThousandSpheres());
-		mgr.AddScene(TestScene());
 	}
 
 } // namespace GameScenes

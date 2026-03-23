@@ -6,6 +6,7 @@
 #include "renderer.h"     // for SceneLights
 #include "VoxLoader.h"
 #include "VoxelFactory.h"
+#include <unordered_map>
 
 int SceneManager::AddScene(const SceneDef& def)
 {
@@ -54,21 +55,51 @@ void SceneManager::LoadScene(int id, Tmpl8::Scene& worldScene,
 	worldScene.voxelObjects.clear();
 	worldScene.voxelInstances.clear();
 
-	// ---- 4. Load and flatten .vox objects ----
+	// ---- 4. Load .vox files (cached) and create instances ----
+	// Map: file path → index of first VoxelObject created from that file
+	std::unordered_map<std::string, int> voxCache;
+
 	for (const auto& obj : def.voxObjects)
 	{
 		if (obj.voxFile.empty()) continue;
 
-		VoxLoader::Load(obj.voxFile.c_str(), worldScene);
-
-		if (!worldScene.voxelObjects.empty())
+		// Load file only once — reuse object index for duplicates
+		int firstObjIdx;
+		auto it = voxCache.find(obj.voxFile);
+		if (it != voxCache.end())
 		{
-			int lastIdx = (int)worldScene.voxelObjects.size() - 1;
-			float3 rotRad = obj.rotation * (PI / 180.0f);
-			VoxelFactory::FlattenInstance(
-				worldScene, lastIdx,
-				obj.position, rotRad, obj.scale
-			);
+			firstObjIdx = it->second;
+		}
+		else
+		{
+			firstObjIdx = (int)worldScene.voxelObjects.size();
+			VoxLoader::Load(obj.voxFile.c_str(), worldScene);
+			voxCache[obj.voxFile] = firstObjIdx;
+		}
+
+		// Create instance(s) for each object in the file
+		// (most .vox files contain 1 model, but multi-model files
+		//  produce multiple VoxelObjects from firstObjIdx onward)
+		int objCount = (int)worldScene.voxelObjects.size() - firstObjIdx;
+		for (int k = 0; k < objCount; k++)
+		{
+			int objIdx = firstObjIdx + k;
+
+			if (obj.flatten)
+			{
+				float3 rotRad = obj.rotation * (PI / 180.0f);
+				VoxelFactory::FlattenInstance(
+					worldScene, objIdx,
+					obj.position, rotRad, obj.scale
+				);
+			}
+			else
+			{
+				VoxelFactory::CreateInstance(
+					worldScene, objIdx,
+					obj.position, obj.rotation, obj.scale
+				);
+			}
 		}
 	}
 
@@ -87,6 +118,7 @@ void SceneManager::LoadScene(int id, Tmpl8::Scene& worldScene,
 	sky.sunNoonColor = def.sky.sunColor;
 	sky.sunIntensity = def.sky.sunIntensity;
 	sky.skyCacheDirty = true;
+	sky.animate = def.sky.animate;
 
 	// ---- 8. Lights ----
 	lights.points.clear();
@@ -98,15 +130,36 @@ void SceneManager::LoadScene(int id, Tmpl8::Scene& worldScene,
 	lights.directionals.push_back(sky.moon);
 
 	for (const auto& pl : def.pointLights)    lights.points.push_back(pl);
-	for (const auto& dl : def.dirLights)      lights.directionals.push_back(dl);
-	for (const auto& sl : def.spotLights)     lights.spots.push_back(sl);
-	for (const auto& al : def.areaLights)     lights.areas.push_back(al);
+	for (const auto& dl : def.dirLights)       lights.directionals.push_back(dl);
+	for (const auto& sl : def.spotLights)      lights.spots.push_back(sl);
+	for (const auto& al : def.areaLights)      lights.areas.push_back(al);
 
-	// ---- 9. Done ----
+	// ---- 9. Rebuild all instance matrices ----
+	worldScene.RebuildDirtyInstances();
+
+	// Debug: print instance AABBs and test a ray
+	for (int i = 0; i < (int)worldScene.voxelInstances.size(); i++)
+	{
+		const auto& inst = worldScene.voxelInstances[i];
+		printf("  [inst %d] obj=%d  AABB=(%.4f,%.4f,%.4f)-(%.4f,%.4f,%.4f)\n",
+			i, inst.modelIndex,
+			inst.worldAABBmin.x, inst.worldAABBmin.y, inst.worldAABBmin.z,
+			inst.worldAABBmax.x, inst.worldAABBmax.y, inst.worldAABBmax.z);
+
+		float3 aabbCenter = (inst.worldAABBmin + inst.worldAABBmax) * 0.5f;
+		float3 testD = normalize(aabbCenter - def.camPos);
+		Tmpl8::Ray testRay(def.camPos, testD, 1e34f);
+		worldScene.FindNearest(testRay);
+		printf("    Test ray toward centre: t=%.6f  matIdx=%d  instIdx=%d  axis=%d\n",
+			testRay.t, testRay.materialIndex, testRay.instanceIndex, testRay.axis);
+	}
+
+	// ---- 10. Done ----
 	currentID = id;
-	printf("[SceneManager] Loaded '%s' in %.1fms  %d vox, %d spheres, %d lights\n",
+	printf("[SceneManager] Loaded '%s' in %.1fms  %d voxObj, %d voxInst, %d sph, %d lights\n",
 		def.name, t.elapsed() * 1000.0f,
 		(int)worldScene.voxelObjects.size(),
+		(int)worldScene.voxelInstances.size(),
 		(int)worldScene.spheres.size(),
 		(int)(lights.points.size() + lights.directionals.size() +
 			lights.spots.size() + lights.areas.size()));
@@ -162,8 +215,10 @@ void SceneManager::UI(Tmpl8::Scene& worldScene, Tmpl8::Camera& camera,
 	ImGui::TextDisabled("Active:");
 	ImGui::SameLine();
 	ImGui::Text("%s", def.name);
-	ImGui::SameLine(ImGui::GetContentRegionAvail().x - 120);
-	ImGui::TextDisabled("%d sph | %d lgt",
+	ImGui::SameLine(ImGui::GetContentRegionAvail().x - 180);
+	ImGui::TextDisabled("%d obj | %d inst | %d sph | %d lgt",
+		(int)worldScene.voxelObjects.size(),
+		(int)worldScene.voxelInstances.size(),
 		(int)worldScene.spheres.size(),
 		(int)(lights.points.size() + lights.directionals.size() +
 			lights.spots.size() + lights.areas.size()));

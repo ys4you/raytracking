@@ -28,22 +28,19 @@ constexpr float DEG2RAD = 3.14159265359f / 180.0f;
 inline float3 IlluminateSpot(
     const SpotLight& light,
     const ShadingPoint& sp,
-    Scene& scene)
+    const Scene& scene)
 {
-    const float EPS = 0.05f;
-
-    float3 toPoint = sp.position - light.position;
-
-    float dist2 = dot(toPoint, toPoint);
-    float distance = sqrt(dist2);
-
+    float3 toLight = light.position - sp.position;
+    float dist2 = dot(toLight, toLight);
+    float distance = sqrtf(dist2);
     if (distance > light.range)
         return float3(0);
 
-    float3 L = toPoint / distance;
+    float3 L = toLight / distance;
 
-    Ray shadowRay(sp.position + sp.normal * EPS, -L);
-
+    // Shadow ray — limited to light distance
+    constexpr float EPS = 0.001f;
+    Ray shadowRay(sp.position + sp.normal * EPS, L, distance - EPS);
     if (scene.IsOccluded(shadowRay))
         return float3(0);
 
@@ -51,19 +48,18 @@ inline float3 IlluminateSpot(
 
     float outerAngle = light.spotAngleDeg;
     float innerAngle = outerAngle * (1.0f - light.edgeRoughness);
-
     float cosOuter = cosf(outerAngle * 0.5f * DEG2RAD);
     float cosInner = cosf(innerAngle * 0.5f * DEG2RAD);
 
-    float spotFactor = dot(light.direction, L);
-
+    // Spot cone — compare light direction with direction TO the point
+    float spotFactor = dot(light.direction, -L);
     if (spotFactor < cosOuter)
         return float3(0);
 
     float spotIntensity =
         clamp((spotFactor - cosOuter) / (cosInner - cosOuter), 0.0f, 1.0f);
 
-    float ndotl = max(0.0f, dot(sp.normal, -L));
+    float ndotl = max(0.0f, dot(sp.normal, L));
 
     return light.color * ndotl * attenuation * spotIntensity;
 }

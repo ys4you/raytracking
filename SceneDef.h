@@ -18,6 +18,7 @@ struct VoxPlacement
 	float3 position;
 	float3 rotation;       // degrees
 	float3 scale;
+	bool   flatten = false; // true = bake into world grid, false = TLAS instance
 };
 
 struct SpherePlacement
@@ -33,6 +34,7 @@ struct SkySettings
 	float3 sunColor = float3(1.0f, 0.95f, 0.8f);
 	float  sunIntensity = 2.5f;
 	float  timeOfDay = 0.25f;
+	bool   animate = false;
 };
 
 // ============================================================
@@ -45,8 +47,7 @@ struct SpawnerState
 	float3 rangeMax = { 0.9f, 0.9f, 0.9f };
 	float  radius = 0.02f;
 	int    countChoice = 0;     // index into countValues[]
-	int    matChoice = 0;     // index into material list
-
+	int    matChoice = 0;       // index into material list
 	static constexpr int   countValues[] = { 1, 10, 100, 1000 };
 	static constexpr int   NUM_COUNTS = 4;
 };
@@ -75,4 +76,7 @@ public:
 
 	// Callback: (def, worldScene, resetAccumulator)
 	std::function<void(SceneDef&, Tmpl8::Scene&, std::function<void()>)> uiCallback = nullptr;
+
+	// Per-frame tick callback: (def, worldScene, deltaTimeMs, resetAccumulator)
+	std::function<void(SceneDef&, Tmpl8::Scene&, float, std::function<void()>)> tickCallback = nullptr;
 };

@@ -17,9 +17,9 @@ Ray::Ray(const float3 origin, const float3 direction, const float rayLength, con
 
 float3 Ray::GetNormal(const Scene& scene) const
 {
-    if (axis == 3)
+    // Sphere hit
+    if (sphereIndex >= 0)
     {
-        // Sphere hit — reconstruct normal from SOA centre.
         float3 hitPos = O + t * D;
         float3 centre = float3(
             scene.sphereSOA.cx[sphereIndex],
@@ -29,9 +29,17 @@ float3 Ray::GetNormal(const Scene& scene) const
         return normalize(hitPos - centre);
     }
 
-    // Voxel face normal.
-    // Guard against corrupt axis value — should never be outside 0-2 for a voxel hit.
-    if (axis < 0 || axis > 2) 
+    // TLAS instance hit — use precomputed world-space normals
+    // axis stores face index: +X=0, -X=1, +Y=2, -Y=3, +Z=4, -Z=5
+    if (instanceIndex >= 0)
+    {
+        if (axis >= 0 && axis < 6)
+            return scene.voxelInstances[instanceIndex].worldNormals[axis];
+        return float3(0, 1, 0);
+    }
+
+    // World-grid voxel hit — axis is 0, 1, or 2
+    if (axis < 0 || axis > 2)
         return float3(0, 1, 0);
 
     const float3 sign = Dsign * 2.0f - 1.0f;
@@ -39,7 +47,6 @@ float3 Ray::GetNormal(const Scene& scene) const
     (&n.x)[axis] = (&sign.x)[axis];
     return n;
 }
-
 float3 Ray::GetAlbedo(const Scene& scene) const
 {
     if (sphereIndex >= 0)
