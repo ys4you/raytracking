@@ -81,7 +81,7 @@ void VoxelFactory::FlattenInstance(
     float3 scale)
 {
     const VoxelObject& obj = scene.voxelObjects[objectIndex];
-    scene.voxelInstances.push_back({ objectIndex, position, rotation, scale, float3(0, 0, 0) });
+    // No instance record — flattened objects live in the world grid only
     float cx = cosf(rotation.x), sx = sinf(rotation.x);
     float cy = cosf(rotation.y), sy = sinf(rotation.y);
     float cz = cosf(rotation.z), sz = sinf(rotation.z);

@@ -126,6 +126,8 @@
     <ClInclude Include="SceneManager.h" />
     <ClInclude Include="SceneDef.h" />
     <ClInclude Include="template\Core\Audio\AudioSystem.h" />
+    <ClInclude Include="LivingCubeScene.h" />
+    <ClInclude Include="InfinityMirrorScene.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="template">

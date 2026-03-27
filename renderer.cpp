@@ -9,15 +9,16 @@
 
 float3 Renderer::Trace(Ray& ray, int depth, int, int)
 {
-    constexpr int MAX_DEPTH = 5;
+    constexpr int MAX_DEPTH = 15;
     if (depth >= MAX_DEPTH)
         return float3(0, 0, 0);
-    if (depth >= 2)
-    {
-        constexpr float surviveP = 0.75f;
-        if (RandomFloat() > surviveP)
-            return float3(0, 0, 0);
-    }
+
+    //if (depth >= 4)
+    //{
+    //    constexpr float surviveP = 0.75f;
+    //    if (RandomFloat() > surviveP)
+    //        return float3(0, 0, 0);
+    //}
 
     scene.FindNearest(ray);
 
@@ -94,6 +95,23 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
         float  reflect_prob = 1.0f;
         if (Refract(I, N, ni_over_nt, refracted))
             reflect_prob = Schlick(dot(I, N), mat.ior);
+
+        // ── partial mirror: apply on BOTH sides of the glass ──
+        reflect_prob = max(reflect_prob, mat.metallic);
+
+        const float voxelSkip = 2.0f / 256.0f;
+
+        // ── deterministic blend at depth 0 (camera looking in) ──
+        if (mat.metallic > 0.0f && depth < 1)
+        {
+            Ray reflectedRay(sp.position + N * EPSILON, reflect(I, N));
+            Ray throughRay(sp.position - N * voxelSkip, I);
+            float3 refl = Trace(reflectedRay, depth + 1);
+            float3 thru = Trace(throughRay, depth + 1);
+            return reflect_prob * refl + (1.0f - reflect_prob) * thru;
+        }
+
+        // ── normal glass (stochastic) ──
         if (RandomFloat() < reflect_prob)
         {
             Ray reflectedRay(sp.position + N * EPSILON, reflect(I, N));
@@ -101,7 +119,7 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
         }
         else
         {
-            Ray refractedRay(sp.position - N * EPSILON, refracted);
+            Ray refractedRay(sp.position - N * voxelSkip, refracted);
             return Trace(refractedRay, depth + 1);
         }
     }
@@ -111,6 +129,7 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
 
     return sky.GetSkyColor(ray.D);
 }
+
 // -----------------------------------------------------------
 // Init
 // -----------------------------------------------------------
@@ -168,6 +187,19 @@ void Renderer::Init()
 
     GameScenes::RegisterAllScenes(sceneManager);
     sceneManager.LoadScene(0, scene, camera, sky, lights);
+
+    SceneDef& def = sceneManager.Active();
+    if (!def.splinePoints.empty())
+    {
+        cameraSpline = CatmullRomSpline();
+        for (auto& p : def.splinePoints)
+            cameraSpline.AddPoint(p);
+        useSplineCamera = true;
+    }
+    else
+    {
+        useSplineCamera = false;
+    }
 }
 
 
@@ -323,7 +355,11 @@ void Renderer::Tick(float deltaTime)
                 }
 
                 accumulator[idx] = blended;
-                screen->pixels[idx] = RGBF32_to_RGB8(blended);
+                float3 mapped;
+                mapped.x = blended.x / (1.0f + blended.x);
+                mapped.y = blended.y / (1.0f + blended.y);
+                mapped.z = blended.z / (1.0f + blended.z);
+                screen->pixels[idx] = RGBF32_to_RGB8(mapped);
             }
     }
 

@@ -159,8 +159,10 @@
   <ItemGroup>
     <ClInclude Include="GameScenes.h" />
     <ClInclude Include="HDRCubemap.h" />
+    <ClInclude Include="InfinityMirrorScene.h" />
     <ClInclude Include="lib\tiny_bvh.h" />
     <ClInclude Include="lib\VoxLoader.h" />
+    <ClInclude Include="LivingCubeScene.h" />
     <ClInclude Include="PhysicsBall.h" />
     <ClInclude Include="PhysicsWorld.h" />
     <ClInclude Include="SceneDef.h" />

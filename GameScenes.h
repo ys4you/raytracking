@@ -3,6 +3,8 @@
 // GameScenes.h — Define your scenes here
 // ============================================================
 #include "SceneManager.h"
+#include "LivingCubeScene.h"
+#include "InfinityMirrorScene.h"
 
 
 namespace GameScenes
@@ -10,8 +12,6 @@ namespace GameScenes
 
 	// ============================================================
 	// Shared state for all showcase scenes.
-	// Persists across scene switches — rotation, tilt, and speed
-	// carry over seamlessly when transitioning between scenes.
 	// ============================================================
 
 	struct ShowcaseRotation
@@ -19,9 +19,9 @@ namespace GameScenes
 		float angleX = 0.0f;
 		float angleY = 0.0f;
 		float angleZ = 0.0f;
-		float speedX = 0.12f;   // slow tumble
-		float speedY = 0.25f;   // primary spin axis
-		float speedZ = 0.08f;   // subtle roll
+		float speedX = 0.12f;
+		float speedY = 0.25f;
+		float speedZ = 0.08f;
 
 		void Tick(float deltaTimeMs)
 		{
@@ -49,71 +49,55 @@ namespace GameScenes
 
 	// ============================================================
 	// Shared showcase setup — sky, camera, lights, callbacks.
-	// Each showcase scene calls this, then adds its own voxObject.
 	// ============================================================
 
 	inline void SetupShowcase(SceneDef& s)
 	{
-		// ── Camera — gallery viewing angle ────────────────────
 		s.camPos = float3(0.5f, 0.46f, 0.25f);
 		s.camTarget = float3(0.5f, 0.45f, 0.5f);
 
-		// ── Sky — let the coral pink HDR (order_sky.hdr) shine through ──
-		// Low sun intensity so the procedural layer doesn't overpower
-		// the HDR. Warm coral sun colour blends with the HDR gradient.
 		s.sky.sunDir = normalize(float3(0.2f, -0.5f, 0.3f));
-		s.sky.sunColor = float3(1.0f, 0.85f, 0.8f);   // warm coral
+		s.sky.sunColor = float3(1.0f, 0.85f, 0.8f);
 		s.sky.sunIntensity = 1.2f;
 		s.sky.timeOfDay = 0.3f;
 		s.sky.animate = false;
 
-		// Object centre (approx) — lights aim here
-		const float3 objC = float3(0.5f, 0.45f, 0.5f);
-
-		// ── Overhead — soft, diffused, white-cube gallery feel ──
-		// Sourceless, bright, no hard shadows
 		PointLight overhead;
 		overhead.position = float3(0.5f, 0.85f, 0.5f);
-		overhead.color = float3(0.9f, 0.88f, 0.85f);  // Pearl White warmth
+		overhead.color = float3(1.8f, 1.75f, 1.7f);
 		overhead.enabled = true;
 		s.pointLights.push_back(overhead);
 
-		// ── Front — even wash, slightly coral-tinted ──────────
 		PointLight front;
 		front.position = float3(0.5f, 0.45f, 0.1f);
-		front.color = float3(0.5f, 0.48f, 0.46f);
+		front.color = float3(1.0f, 0.95f, 0.9f);
 		front.enabled = true;
 		s.pointLights.push_back(front);
 
-		// ── Left fill — muted teal accent #8CB8B0 ────────────
 		PointLight leftFill;
 		leftFill.position = float3(0.1f, 0.5f, 0.5f);
-		leftFill.color = float3(0.22f, 0.29f, 0.28f);  // Muted Teal
+		leftFill.color = float3(0.4f, 0.55f, 0.5f);
 		leftFill.enabled = true;
 		s.pointLights.push_back(leftFill);
 
-		// ── Right fill — pale lavender accent #C8B8D8 ─────────
 		PointLight rightFill;
 		rightFill.position = float3(0.9f, 0.5f, 0.5f);
-		rightFill.color = float3(0.25f, 0.22f, 0.3f);   // Pale Lavender
+		rightFill.color = float3(0.45f, 0.4f, 0.55f);
 		rightFill.enabled = true;
 		s.pointLights.push_back(rightFill);
 
-		// ── Below — very subtle uplight, prevents pure black ──
 		PointLight below;
 		below.position = float3(0.5f, 0.15f, 0.5f);
-		below.color = float3(0.15f, 0.14f, 0.13f);
+		below.color = float3(0.3f, 0.28f, 0.26f);
 		below.enabled = true;
 		s.pointLights.push_back(below);
 
-		// ── Behind — rim catch, desaturated blue #7898B8 ──────
 		PointLight behind;
 		behind.position = float3(0.5f, 0.5f, 0.9f);
-		behind.color = float3(0.15f, 0.19f, 0.23f);    // Desat. Blue
+		behind.color = float3(0.3f, 0.38f, 0.45f);
 		behind.enabled = true;
 		s.pointLights.push_back(behind);
 
-		// ── Shared tick and UI callbacks ───────────────────────
 		auto rot = SharedRotation();
 
 		s.tickCallback = [rot](SceneDef& def, Tmpl8::Scene& scene,
@@ -144,7 +128,7 @@ namespace GameScenes
 
 
 	// ============================================================
-	// 01 CUBE — white display cube
+	// 01 CUBE
 	// ============================================================
 
 	inline SceneDef CubeShowcase()
@@ -154,8 +138,15 @@ namespace GameScenes
 		SetupShowcase(s);
 
 		s.voxObjects.push_back({
+			"assets/Showcase/display_platform.vox",
+			float3(256, 120, 256),
+			float3(0, 0, 0),
+			float3(1, 1, 1), true
+			});
+
+		s.voxObjects.push_back({
 			"assets/Showcase/display_cube.vox",
-			float3(256, 230, 256),
+			float3(256, 240, 256),
 			float3(0, 0, 0),
 			float3(1, 1, 1)
 			});
@@ -165,7 +156,7 @@ namespace GameScenes
 
 
 	// ============================================================
-	// 02 MENGER — Menger sponge fractal (dim 2.7268)
+	// 02 MENGER
 	// ============================================================
 
 	inline SceneDef MengerShowcase()
@@ -175,57 +166,19 @@ namespace GameScenes
 		SetupShowcase(s);
 
 		s.voxObjects.push_back({
+			"assets/Showcase/display_platform.vox",
+			float3(256, 120, 256),
+			float3(0, 0, 0),
+			float3(1, 1, 1), true
+			});
+
+		s.voxObjects.push_back({
 			"assets/Showcase/menger_sponge.vox",
-			float3(256, 235, 256),
+			float3(256, 245, 256),
 			float3(0, 0, 0),
 			float3(1, 1, 1)
 			});
 
-		return s;
-	}
-
-
-	// ============================================================
-	// Order Sector — Side Order main environment
-	// ============================================================
-
-	inline SceneDef OrderSector()
-	{
-		SceneDef s;
-		s.name = "Order Sector";
-
-		s.camPos = float3(0.15f, 0.25f, 0.15f);
-		s.camTarget = float3(0.5f, 0.3f, 0.5f);
-
-		s.sky.sunDir = normalize(float3(0.2f, -0.5f, 0.3f));
-		s.sky.sunColor = float3(1.0f, 0.75f, 0.7f);
-		s.sky.sunIntensity = 1.4f;
-		s.sky.timeOfDay = 0.3f;
-		s.sky.animate = false;
-
-		const float3 R0 = float3(0, 0, 0);
-
-		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(67, 4, 67),   R0, float3(1,1,1) });
-		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(193, 4, 67),  R0, float3(1,1,1) });
-		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(319, 4, 67),  R0, float3(1,1,1) });
-		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(445, 4, 67),  R0, float3(1,1,1) });
-
-		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(67, 4, 193),  R0, float3(1,1,1) });
-		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(193, 4, 193), R0, float3(1,1,1) });
-		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(319, 4, 193), R0, float3(1,1,1) });
-		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(445, 4, 193), R0, float3(1,1,1) });
-
-		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(67, 4, 319),  R0, float3(1,1,1) });
-		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(193, 4, 319), R0, float3(1,1,1) });
-		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(319, 4, 319), R0, float3(1,1,1) });
-		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(445, 4, 319), R0, float3(1,1,1) });
-
-		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(67, 4, 445),  R0, float3(1,1,1) });
-		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(193, 4, 445), R0, float3(1,1,1) });
-		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(319, 4, 445), R0, float3(1,1,1) });
-		s.voxObjects.push_back({ "assets/OrderSector/ground_plaza.vox", float3(445, 4, 445), R0, float3(1,1,1) });
-
-		s.uiCallback = nullptr;
 		return s;
 	}
 
@@ -417,17 +370,16 @@ namespace GameScenes
 
 		return s;
 	}
-
-
 	// ============================================================
 	// Register all scenes
 	// ============================================================
 
 	inline void RegisterAllScenes(SceneManager& mgr)
 	{
+		mgr.AddScene(InfinityMirrorShowcase());
+		mgr.AddScene(LivingCubeShowcase());
 		mgr.AddScene(CubeShowcase());
 		mgr.AddScene(MengerShowcase());
-		mgr.AddScene(OrderSector());
 		mgr.AddScene(ThousandSpheres());
 	}
 

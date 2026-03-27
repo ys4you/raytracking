@@ -55,6 +55,9 @@ void SceneManager::LoadScene(int id, Tmpl8::Scene& worldScene,
 	worldScene.voxelObjects.clear();
 	worldScene.voxelInstances.clear();
 
+	if (def.gridBuilder)
+		def.gridBuilder(worldScene);
+
 	// ---- 4. Load .vox files (cached) and create instances ----
 	// Map: file path → index of first VoxelObject created from that file
 	std::unordered_map<std::string, int> voxCache;
@@ -153,6 +156,8 @@ void SceneManager::LoadScene(int id, Tmpl8::Scene& worldScene,
 		printf("    Test ray toward centre: t=%.6f  matIdx=%d  instIdx=%d  axis=%d\n",
 			testRay.t, testRay.materialIndex, testRay.instanceIndex, testRay.axis);
 	}
+
+
 
 	// ---- 10. Done ----
 	currentID = id;

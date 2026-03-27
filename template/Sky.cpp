@@ -168,8 +168,6 @@ float3 Sky::GetProceduralSky(const float3& dir) const
 // ===========================================================================
 void Sky::RebuildSkyCache()
 {
-    // skyCache is already sized in the constructor; this is a no-op after
-    // the first frame but kept for safety.
     skyCache.resize(SKY_W * SKY_H);
 
 #pragma omp parallel for schedule(static)
@@ -177,13 +175,11 @@ void Sky::RebuildSkyCache()
     {
         for (int x = 0; x < SKY_W; x++)
         {
-            // UV with half-pixel offset so each sample hits the pixel centre.
             float u = (x + 0.5f) / (float)SKY_W;
             float v = (y + 0.5f) / (float)SKY_H;
 
-            // Convert UV back to a unit direction (equirectangular).
-            float phi = u * 2.0f * PI - PI;   // [-π, π]
-            float theta = v * PI;                // [0, π]
+            float phi = u * 2.0f * PI - PI;
+            float theta = v * PI;
 
             float sinT = sinf(theta);
             float3 dir = {
@@ -194,11 +190,41 @@ void Sky::RebuildSkyCache()
 
             float3 colour = GetSkyColorUncached(dir);
 
+            // =========================
+            // 1. Tone Mapping (HDR → LDR)
+            // =========================
+            float exposure = 1.2f;
+            colour = float3(
+                1.0f - expf(-colour.x * exposure),
+                1.0f - expf(-colour.y * exposure),
+                1.0f - expf(-colour.z * exposure)
+            );
+
+            // =========================
+            // 2. Gamma Correction (linear → sRGB)
+            // =========================
+            colour = float3(
+                powf(colour.x, 1.0f / 2.2f),
+                powf(colour.y, 1.0f / 2.2f),
+                powf(colour.z, 1.0f / 2.2f)
+            );
+
+            // =========================
+            // 3. Dithering (kills banding)
+            // =========================
+            float noise = sinf(dot(dir, float3(12.9898f, 78.233f, 45.164f))) * 43758.5453f;
+            noise = noise - floorf(noise);
+            colour += (noise - 0.5f) * 0.002f;
+
+            // =========================
+            // 4. Clamp (safety)
+            // =========================
+            colour = clamp(colour, 0.0f, 1.0f);
+
             SkyPixel& p = skyCache[y * SKY_W + x];
             p.r = colour.x;
             p.g = colour.y;
             p.b = colour.z;
-            // p._pad intentionally unused
         }
     }
 
@@ -271,5 +297,9 @@ float3 Sky::GetSkyColorUncached(const float3& dir) const
         return procedural;
 
     float3 hdr = SampleHDR(dir);
-    return lerp(procedural, hdr, cachedHdrBlend);
+
+    // Slight contrast boost for better visuals
+    float3 blended = lerp(procedural, hdr, cachedHdrBlend);
+
+    return blended;
 }

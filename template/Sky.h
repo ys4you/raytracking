@@ -79,8 +79,8 @@ private:
     // ------------------------------------------------------------------
     HDRCubemap hdrSky;
 
-    static constexpr int SKY_W = 512;   // must stay power of two
-    static constexpr int SKY_H = 256;    // must stay power of two
+    static constexpr int SKY_W = 2048;   // must stay power of two
+    static constexpr int SKY_H = 1024;    // must stay power of two
 
     std::vector<SkyPixel> skyCache;
 

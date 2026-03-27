@@ -12,6 +12,23 @@ struct HDRCubemap
     int    channels = 0;       // always 4 after Load()
     float* data = nullptr; // interleaved RGBA, 4 floats per pixel
 
+    float FindMaxValue() const
+    {
+        if (!data) return 0.0f;
+
+        float maxVal = 0.0f;
+
+        int total = width * height * 4; // RGBA
+
+        for (int i = 0; i < total; i++)
+        {
+            if (data[i] > maxVal)
+                maxVal = data[i];
+        }
+
+        return maxVal;
+    }
+
     // -----------------------------------------------------------------------
     // Load
     //   Forces 4 channels so stride = width * 4 floats (16 bytes / pixel).
@@ -21,6 +38,8 @@ struct HDRCubemap
     {
         stbi_set_flip_vertically_on_load(true);
         data = stbi_loadf(path, &width, &height, &channels, 4);
+
+        printf("Max HDR value: %f\n", FindMaxValue());
         channels = 4; // we forced it above; record the actual stride
         return data != nullptr;
     }
@@ -49,7 +68,7 @@ struct HDRCubemap
         // Horizontal: wrap with modulo (panorama has a left-right seam).
         // Vertical  : clamp so we never read outside the image.
         int x0 = ((ix % width) + width) % width;  // wrap
-        int x1 = ((ix + 1 % width) + width) % width;  // wrap
+        int x1 = ((ix + 1) % width + width) % width;  // wrap
         int y0 = max(0, min(iy, height - 1));        // clamp
         int y1 = max(0, min(iy + 1, height - 1));        // clamp
 
