@@ -13,13 +13,6 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
     if (depth >= MAX_DEPTH)
         return float3(0, 0, 0);
 
-    //if (depth >= 4)
-    //{
-    //    constexpr float surviveP = 0.75f;
-    //    if (RandomFloat() > surviveP)
-    //        return float3(0, 0, 0);
-    //}
-
     scene.FindNearest(ray);
 
     // ── Miss check ────────────────────────────────────────────
@@ -39,8 +32,10 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
     const Material& mat = *matPtr;
 
     // ── Fast sphere shading (LOD optimisation) ────────────────
+    // Skip for emissive spheres — they must return emission * emissionStr
     if (fastSphereShading && ray.sphereIndex >= 0 &&
-        static_cast<int>(scene.spheres.size()) >= fastSphereThreshold)
+        static_cast<int>(scene.spheres.size()) >= fastSphereThreshold &&
+        mat.type != MaterialType::Emissive)
     {
         const float3 hitPos = ray.O + ray.t * ray.D;
         const float3 centre = float3(
@@ -51,8 +46,25 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
         const float3 diff = hitPos - centre;
         const float  invLen = _mm_cvtss_f32(_mm_rsqrt_ss(_mm_set_ss(dot(diff, diff))));
         const float3 N = diff * invLen;
+
+        // Base directional fill light (white)
         const float  ndotl = max(0.0f, dot(N, fastSphereLightDir));
-        return mat.albedo * (fastSphereAmbient + (1.0f - fastSphereAmbient) * ndotl);
+        float3 color = mat.albedo * (fastSphereAmbient + (1.0f - fastSphereAmbient) * ndotl);
+
+        // Cheap point light contributions (no shadow rays)
+        for (const PointLight& pl : lights.points)
+        {
+            if (!pl.enabled) continue;
+            const float3 toLight = pl.position - hitPos;
+            const float  dist2 = dot(toLight, toLight);
+            const float  invDist = _mm_cvtss_f32(_mm_rsqrt_ss(_mm_set_ss(dist2)));
+            const float3 L = toLight * invDist;
+            const float  nl = max(0.0f, dot(N, L));
+            // Inverse-square falloff
+            color += mat.albedo * pl.color * nl * (invDist * invDist);
+        }
+
+        return color;
     }
 
     // ── Shading point ─────────────────────────────────────────
@@ -96,12 +108,10 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
         if (Refract(I, N, ni_over_nt, refracted))
             reflect_prob = Schlick(dot(I, N), mat.ior);
 
-        // ── partial mirror: apply on BOTH sides of the glass ──
         reflect_prob = max(reflect_prob, mat.metallic);
 
         const float voxelSkip = 2.0f / 256.0f;
 
-        // ── deterministic blend at depth 0 (camera looking in) ──
         if (mat.metallic > 0.0f && depth < 1)
         {
             Ray reflectedRay(sp.position + N * EPSILON, reflect(I, N));
@@ -111,7 +121,6 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
             return reflect_prob * refl + (1.0f - reflect_prob) * thru;
         }
 
-        // ── normal glass (stochastic) ──
         if (RandomFloat() < reflect_prob)
         {
             Ray reflectedRay(sp.position + N * EPSILON, reflect(I, N));
@@ -129,6 +138,110 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
 
     return sky.GetSkyColor(ray.D);
 }
+
+
+// -----------------------------------------------------------
+// Bloom post-process — quarter-resolution separable box blur
+// Extracts bright HDR pixels, blurs at 1/4 res, bilinear
+// upsamples and adds back with Reinhard tonemapping.
+// -----------------------------------------------------------
+void Renderer::ApplyBloom()
+{
+    // ── Step 1: Downsample + threshold ────────────────────────
+#pragma omp parallel for schedule(static)
+    for (int by = 0; by < BLOOM_H; by++)
+        for (int bx = 0; bx < BLOOM_W; bx++)
+        {
+            float3 sum = float3(0, 0, 0);
+            for (int dy = 0; dy < 4; dy++)
+                for (int dx = 0; dx < 4; dx++)
+                {
+                    int sx = min(bx * 4 + dx, SCRWIDTH - 1);
+                    int sy = min(by * 4 + dy, SCRHEIGHT - 1);
+                    sum += accumulator[sx + sy * SCRWIDTH];
+                }
+            float3 avg = sum * (1.0f / 16.0f);
+            float lum = avg.x * 0.299f + avg.y * 0.587f + avg.z * 0.114f;
+            // Soft-knee extraction: preserve colour ratios
+            bloomDown[bx + by * BLOOM_W] = (lum > bloomThreshold)
+                ? avg * ((lum - bloomThreshold) / lum)
+                : float3(0, 0, 0);
+        }
+
+    // ── Step 2: Two passes of separable box blur ──────────────
+    for (int pass = 0; pass < 2; pass++)
+    {
+        const int R = bloomRadius * (pass + 1);
+        const float invK = 1.0f / (float)(2 * R + 1);
+
+        // Horizontal
+#pragma omp parallel for schedule(static)
+        for (int by = 0; by < BLOOM_H; by++)
+            for (int bx = 0; bx < BLOOM_W; bx++)
+            {
+                float3 s = float3(0, 0, 0);
+                for (int dx = -R; dx <= R; dx++)
+                {
+                    int sx = bx + dx;
+                    if (sx < 0) sx = 0;
+                    if (sx >= BLOOM_W) sx = BLOOM_W - 1;
+                    s += bloomDown[sx + by * BLOOM_W];
+                }
+                bloomTemp[bx + by * BLOOM_W] = s * invK;
+            }
+
+        // Vertical
+#pragma omp parallel for schedule(static)
+        for (int by = 0; by < BLOOM_H; by++)
+            for (int bx = 0; bx < BLOOM_W; bx++)
+            {
+                float3 s = float3(0, 0, 0);
+                for (int dy = -R; dy <= R; dy++)
+                {
+                    int sy = by + dy;
+                    if (sy < 0) sy = 0;
+                    if (sy >= BLOOM_H) sy = BLOOM_H - 1;
+                    s += bloomTemp[bx + sy * BLOOM_W];
+                }
+                bloomDown[bx + by * BLOOM_W] = s * invK;
+            }
+    }
+
+    // ── Step 3: Bilinear upsample bloom + tonemap to screen ──
+#pragma omp parallel for schedule(static)
+    for (int y = 0; y < SCRHEIGHT; y++)
+        for (int x = 0; x < SCRWIDTH; x++)
+        {
+            // Bilinear sample from quarter-res bloom
+            float bx = ((float)x + 0.5f) * 0.25f - 0.5f;
+            float by = ((float)y + 0.5f) * 0.25f - 0.5f;
+            int x0 = (int)floorf(bx), y0 = (int)floorf(by);
+            float fx = bx - (float)x0, fy = by - (float)y0;
+            int x1 = x0 + 1, y1 = y0 + 1;
+            if (x0 < 0) x0 = 0; if (x1 >= BLOOM_W) x1 = BLOOM_W - 1;
+            if (y0 < 0) y0 = 0; if (y1 >= BLOOM_H) y1 = BLOOM_H - 1;
+            if (x0 >= BLOOM_W) x0 = BLOOM_W - 1;
+            if (y0 >= BLOOM_H) y0 = BLOOM_H - 1;
+
+            float3 b00 = bloomDown[x0 + y0 * BLOOM_W];
+            float3 b10 = bloomDown[x1 + y0 * BLOOM_W];
+            float3 b01 = bloomDown[x0 + y1 * BLOOM_W];
+            float3 b11 = bloomDown[x1 + y1 * BLOOM_W];
+            float3 top = b00 * (1.0f - fx) + b10 * fx;
+            float3 bot = b01 * (1.0f - fx) + b11 * fx;
+            float3 bloom = top * (1.0f - fy) + bot * fy;
+
+            // Add bloom to HDR accumulator, then Reinhard tonemap
+            const int idx = x + y * SCRWIDTH;
+            float3 hdr = accumulator[idx] + bloom * bloomIntensity;
+            float3 mapped;
+            mapped.x = hdr.x / (1.0f + hdr.x);
+            mapped.y = hdr.y / (1.0f + hdr.y);
+            mapped.z = hdr.z / (1.0f + hdr.z);
+            screen->pixels[idx] = RGBF32_to_RGB8(mapped);
+        }
+}
+
 
 // -----------------------------------------------------------
 // Init
@@ -161,6 +274,10 @@ void Renderer::Init()
 
     rayDirTable = new float3[SCRWIDTH * SCRHEIGHT];
     rayTableDirty = true;
+
+    // ── Bloom buffers (quarter resolution) ────────────────────
+    bloomDown = new float3[BLOOM_W * BLOOM_H];
+    bloomTemp = new float3[BLOOM_W * BLOOM_H];
 
     InitAccumulator();
 
@@ -212,6 +329,7 @@ void Renderer::Tick(float deltaTime)
 
     auto startTime = std::chrono::high_resolution_clock::now();
     sampleCount++;
+    frameIndex++;  // Checkerboard half-alternation (credit: Niek)
     int totalRaysThisFrame = 0;
 
     sky.Update(deltaTime);
@@ -261,8 +379,7 @@ void Renderer::Tick(float deltaTime)
         ResetAccumulator();
     }
 
-    // ── Per-frame scene logic (animation, voxel re-stamping, etc.) ──
-    // Runs BEFORE the OpenMP pixel loop — must not overlap with ray tracing.
+    // ── Per-frame scene logic ─────────────────────────────────
     if (sceneManager.HasActive() && sceneManager.Active().tickCallback)
     {
         sceneManager.Active().tickCallback(
@@ -276,6 +393,8 @@ void Renderer::Tick(float deltaTime)
     const int tilesY = (SCRHEIGHT + TILE - 1) / TILE;
     const int totalTiles = tilesX * tilesY;
 
+    // ── Tile loop — writes HDR to accumulator only ────────────
+    // Tonemapping is deferred to the bloom pass (or fallback).
 #pragma omp parallel for schedule(dynamic, 1) reduction(+:totalRaysThisFrame)
     for (int tileIdx = 0; tileIdx < totalTiles; ++tileIdx)
     {
@@ -291,6 +410,18 @@ void Renderer::Tick(float deltaTime)
             {
                 const int idx = x + y * SCRWIDTH;
 
+                // ── Checkerboard rendering (credit: Niek) ─────────
+                const bool traceThisPixel = (sampleCount <= 1) ||
+                    (((x + y) & 1) == (static_cast<int>(frameIndex) & 1));
+
+                if (!traceThisPixel)
+                {
+                    // Reuse previous frame's HDR result
+                    accumulator[idx] = history[idx];
+                    continue;
+                }
+
+                // ── Traced pixel path ─────────────────────────────
                 const float jx = BlueNoise(x, y, sampleCount);
                 const float jy = BlueNoise(y, x, sampleCount);
 
@@ -354,13 +485,29 @@ void Renderer::Tick(float deltaTime)
                     sampleCountPerPixel[idx] = 1;
                 }
 
+                // HDR only — tonemapping deferred to bloom/fallback pass
                 accumulator[idx] = blended;
-                float3 mapped;
-                mapped.x = blended.x / (1.0f + blended.x);
-                mapped.y = blended.y / (1.0f + blended.y);
-                mapped.z = blended.z / (1.0f + blended.z);
-                screen->pixels[idx] = RGBF32_to_RGB8(mapped);
             }
+    }
+
+    // ── Post-process: bloom + tonemap ─────────────────────────
+    if (enableBloom)
+    {
+        ApplyBloom();  // reads accumulator → bloom → tonemap → screen
+    }
+    else
+    {
+        // Fallback: plain Reinhard tonemap, no bloom
+#pragma omp parallel for schedule(static)
+        for (int i = 0; i < SCRWIDTH * SCRHEIGHT; i++)
+        {
+            float3 c = accumulator[i];
+            float3 mapped;
+            mapped.x = c.x / (1.0f + c.x);
+            mapped.y = c.y / (1.0f + c.y);
+            mapped.z = c.z / (1.0f + c.z);
+            screen->pixels[i] = RGBF32_to_RGB8(mapped);
+        }
     }
 
     prevCamera = camera;
@@ -383,7 +530,7 @@ void Renderer::Tick(float deltaTime)
 
 
 // -----------------------------------------------------------
-// Stats window — compact, always visible
+// Stats window
 // -----------------------------------------------------------
 void Renderer::UIStats()
 {
@@ -420,8 +567,6 @@ void Renderer::UIStats()
 
 
 // -----------------------------------------------------------
-// Helper: single light editor with colored type indicator
-// -----------------------------------------------------------
 static void LightColorDot(float3 c)
 {
     ImGui::ColorButton("##dot", ImVec4(c.x, c.y, c.z, 1.0f),
@@ -440,9 +585,7 @@ void Renderer::UI()
 {
     ImGui::Begin("Inspector");
 
-    // ── Scene Manager (always at top) ─────────────────────────────────
     sceneManager.UI(scene, camera, sky, lights, [this]() { ResetAccumulator(); });
-
 
     UIStats();
 
@@ -492,6 +635,20 @@ void Renderer::UI()
         }
     }
 
+    // ── Post-Processing ──────────────────────────────────────────────
+    if (ImGui::CollapsingHeader("Post-Processing"))
+    {
+        bool ppChanged = false;
+        ppChanged |= ImGui::Checkbox("Enable Bloom", &enableBloom);
+        if (enableBloom)
+        {
+            ppChanged |= ImGui::SliderFloat("Bloom Threshold", &bloomThreshold, 0.1f, 5.0f, "%.2f");
+            ppChanged |= ImGui::SliderFloat("Bloom Intensity", &bloomIntensity, 0.0f, 1.0f, "%.2f");
+            ppChanged |= ImGui::SliderInt("Bloom Radius", &bloomRadius, 2, 16);
+        }
+        if (ppChanged) ResetAccumulator();
+    }
+
     // ── Sky ──────────────────────────────────────────────────────────
     if (ImGui::CollapsingHeader("Sky"))
     {
@@ -530,27 +687,21 @@ void Renderer::UI()
         bool lightsChanged = false;
         int  uid = 0;
 
-        // Summary line
         int totalLights = (int)(lights.points.size() + lights.directionals.size() +
             lights.spots.size() + lights.areas.size());
         ImGui::TextDisabled("%d light%s", totalLights, totalLights == 1 ? "" : "s");
         ImGui::Spacing();
 
-        // ── Point lights ───────────────────────────────────────
         for (size_t i = 0; i < lights.points.size(); i++)
         {
             PointLight& pl = lights.points[i];
             ImGui::PushID(uid++);
-
             LightColorDot(pl.color);
             char label[64];
             snprintf(label, sizeof(label), "Point %d", (int)i);
             bool open = ImGui::TreeNode(label);
-
-            // Enable toggle on the right
             ImGui::SameLine(ImGui::GetContentRegionAvail().x + ImGui::GetCursorPosX() - 24);
             if (ImGui::Checkbox("##en", &pl.enabled)) lightsChanged = true;
-
             if (open)
             {
                 ImGui::BeginDisabled(!pl.enabled);
@@ -562,20 +713,16 @@ void Renderer::UI()
             ImGui::PopID();
         }
 
-        // ── Directional lights ─────────────────────────────────
         for (size_t i = 0; i < lights.directionals.size(); i++)
         {
             DirectionalLight& dl = lights.directionals[i];
             ImGui::PushID(uid++);
-
             LightColorDot(dl.color);
             char label[64];
             snprintf(label, sizeof(label), "Directional %d", (int)i);
             bool open = ImGui::TreeNode(label);
-
             ImGui::SameLine(ImGui::GetContentRegionAvail().x + ImGui::GetCursorPosX() - 24);
             if (ImGui::Checkbox("##en", &dl.enabled)) lightsChanged = true;
-
             if (open)
             {
                 ImGui::BeginDisabled(!dl.enabled);
@@ -589,20 +736,16 @@ void Renderer::UI()
             ImGui::PopID();
         }
 
-        // ── Spot lights ────────────────────────────────────────
         for (size_t i = 0; i < lights.spots.size(); i++)
         {
             SpotLight& sl = lights.spots[i];
             ImGui::PushID(uid++);
-
             LightColorDot(sl.color);
             char label[64];
             snprintf(label, sizeof(label), "Spot %d", (int)i);
             bool open = ImGui::TreeNode(label);
-
             ImGui::SameLine(ImGui::GetContentRegionAvail().x + ImGui::GetCursorPosX() - 24);
             if (ImGui::Checkbox("##en", &sl.enabled)) lightsChanged = true;
-
             if (open)
             {
                 ImGui::BeginDisabled(!sl.enabled);
@@ -621,20 +764,16 @@ void Renderer::UI()
             ImGui::PopID();
         }
 
-        // ── Area lights ────────────────────────────────────────
         for (size_t i = 0; i < lights.areas.size(); i++)
         {
             AreaLight& al = lights.areas[i];
             ImGui::PushID(uid++);
-
             LightColorDot(al.color);
             char label[64];
             snprintf(label, sizeof(label), "Area %d", (int)i);
             bool open = ImGui::TreeNode(label);
-
             ImGui::SameLine(ImGui::GetContentRegionAvail().x + ImGui::GetCursorPosX() - 24);
             if (ImGui::Checkbox("##en", &al.enabled)) lightsChanged = true;
-
             if (open)
             {
                 ImGui::BeginDisabled(!al.enabled);
@@ -675,14 +814,11 @@ void Renderer::UI()
 
 
 // -----------------------------------------------------------
-// Material editor
-// -----------------------------------------------------------
 bool Renderer::MaterialUI(const char* label, Material& material)
 {
     ImGui::PushID(label);
     bool changed = false;
 
-    // Albedo preview dot next to the label
     ImGui::ColorButton("##alb", ImVec4(material.albedo.x, material.albedo.y,
         material.albedo.z, 1.0f),
         ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoPicker,
@@ -712,8 +848,6 @@ bool Renderer::MaterialUI(const char* label, Material& material)
             break;
         case MaterialType::Dielectric:
             changed |= ImGui::SliderFloat("IOR", &material.ior, 1.0f, 2.5f);
-
-            // Quick presets
             if (ImGui::SmallButton("Glass")) { material.ior = 1.52f; changed = true; }
             ImGui::SameLine();
             if (ImGui::SmallButton("Water")) { material.ior = 1.33f; changed = true; }

@@ -2,7 +2,7 @@
 #include "Sphere.h"
 #include "tiny_bvh.h"
 
-#define WORLDSIZE 512
+#define WORLDSIZE 16
 #define GRIDSIZE  WORLDSIZE
 #define GRIDSIZE2 WORLDSIZE * WORLDSIZE
 #define GRIDSIZE3 WORLDSIZE * WORLDSIZE * WORLDSIZE

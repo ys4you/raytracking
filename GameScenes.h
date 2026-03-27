@@ -5,6 +5,7 @@
 #include "SceneManager.h"
 #include "LivingCubeScene.h"
 #include "InfinityMirrorScene.h"
+#include "GyroscopeScene.h"
 
 
 namespace GameScenes
@@ -376,6 +377,7 @@ namespace GameScenes
 
 	inline void RegisterAllScenes(SceneManager& mgr)
 	{
+		mgr.AddScene(GyroscopeShowcase());
 		mgr.AddScene(InfinityMirrorShowcase());
 		mgr.AddScene(LivingCubeShowcase());
 		mgr.AddScene(CubeShowcase());

@@ -158,6 +158,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="GameScenes.h" />
+    <ClInclude Include="GyroscopeScene.h" />
     <ClInclude Include="HDRCubemap.h" />
     <ClInclude Include="InfinityMirrorScene.h" />
     <ClInclude Include="lib\tiny_bvh.h" />

@@ -5,13 +5,9 @@
 #include "Core/Lighting/PointLight.h"
 #include "Core/Lighting/SpotLight.h"
 #include "Core/Animations/SplineFollower.h"
-
 #include "PhysicsWorld.h"
-
 #include "SceneManager.h"
 #include "GameScenes.h"
-
-
 class material;
 struct SceneLights
 {
@@ -20,7 +16,6 @@ struct SceneLights
 	std::vector<SpotLight> spots;
 	std::vector<AreaLight> areas;
 };
-
 namespace Tmpl8
 {
 	class Renderer : public TheApp
@@ -106,6 +101,8 @@ namespace Tmpl8
 		float3* rayDirTable = nullptr;
 		bool    rayTableDirty = true;
 		uint32_t sampleCount = 0;
+		// Checkerboard rendering — alternate which half of pixels is traced (credit: Niek)
+		uint32_t frameIndex = 0;
 		mat4 lastViewMatrix;
 		void InitAccumulator();
 		void ResetAccumulator();
@@ -121,5 +118,14 @@ namespace Tmpl8
 		PhysicsWorld physics;
 		SceneManager sceneManager;
 
+		float3* bloomDown = nullptr;
+		float3* bloomTemp = nullptr;
+		static constexpr int BLOOM_W = SCRWIDTH / 4;
+		static constexpr int BLOOM_H = SCRHEIGHT / 4;
+		bool   enableBloom = true;
+		float  bloomThreshold = 1.0f;
+		float  bloomIntensity = 0.35f;
+		int    bloomRadius = 6; 
+		void   ApplyBloom();
 	};
 } // namespace Tmpl8
