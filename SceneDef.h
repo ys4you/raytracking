@@ -50,6 +50,7 @@ class SceneDef
 {
 public:
 	const char* name = "unnamed";
+	bool useVoxelGrid = true;
 	float3 camPos = float3(0.5f, 0.5f, -0.5f);
 	float3 camTarget = float3(0.5f, 0.3f, 0.5f);
 	SkySettings sky;

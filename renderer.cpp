@@ -304,13 +304,18 @@ void Renderer::Init()
 
     GameScenes::RegisterAllScenes(sceneManager);
     sceneManager.LoadScene(0, scene, camera, sky, lights);
+    lastLoadedSceneID = sceneManager.CurrentID();
 
-    SceneDef& def = sceneManager.Active();
-    if (!def.splinePoints.empty())
+    // Rebuild spline from scene 0 if it has one
+    if (sceneManager.HasActive() && !sceneManager.Active().splinePoints.empty())
     {
         cameraSpline = CatmullRomSpline();
-        for (auto& p : def.splinePoints)
+        for (auto& p : sceneManager.Active().splinePoints)
             cameraSpline.AddPoint(p);
+        cameraSpline.BuildArcLengthTable();
+        cameraFollower.spline = &cameraSpline;
+        cameraFollower.speed = 0.15f;
+        cameraFollower.loop = true;
         useSplineCamera = true;
     }
     else
@@ -326,6 +331,30 @@ void Renderer::Init()
 void Renderer::Tick(float deltaTime)
 {
     const float3 orbitCenter = float3(0.5f, 0.5f, 0.5f);
+
+    // ── Detect scene change (handles Init, F-keys, UI buttons) ──
+    if (sceneManager.HasActive() && sceneManager.CurrentID() != lastLoadedSceneID)
+    {
+        lastLoadedSceneID = sceneManager.CurrentID();
+        SceneDef& def = sceneManager.Active();
+        if (!def.splinePoints.empty())
+        {
+            cameraSpline = CatmullRomSpline();
+            for (auto& p : def.splinePoints)
+                cameraSpline.AddPoint(p);
+            cameraSpline.BuildArcLengthTable();
+            cameraFollower.spline = &cameraSpline;
+            cameraFollower.speed = 0.15f;
+            cameraFollower.loop = true;
+            useSplineCamera = true;
+        }
+        else
+        {
+            useSplineCamera = false;
+        }
+        rayTableDirty = true;
+        ResetAccumulator();
+    }
 
     auto startTime = std::chrono::high_resolution_clock::now();
     sampleCount++;

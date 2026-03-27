@@ -2,7 +2,7 @@
 #include "Sphere.h"
 #include "tiny_bvh.h"
 
-#define WORLDSIZE 16
+#define WORLDSIZE 512
 #define GRIDSIZE  WORLDSIZE
 #define GRIDSIZE2 WORLDSIZE * WORLDSIZE
 #define GRIDSIZE3 WORLDSIZE * WORLDSIZE * WORLDSIZE
@@ -177,6 +177,7 @@ namespace Tmpl8
                 memset(b, 0, BRICK_SIZE3);
         }
 
+        bool voxelGridActive = true;
 
         // ---- Data ----
         uint* coarseGrid;

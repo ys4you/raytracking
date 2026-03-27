@@ -45,8 +45,10 @@ void SceneManager::LoadScene(int id, Tmpl8::Scene& worldScene,
 	printf("[SceneManager] Loading scene %d: '%s'\n", id, def.name);
 	Timer t;
 
-	// ---- 1. Clear world grid ----
-	worldScene.ClearWorld();
+	// ---- 1. Set voxel grid flag & conditionally clear ----
+	worldScene.voxelGridActive = def.useVoxelGrid;
+	if (def.useVoxelGrid)
+		worldScene.ClearWorld();
 
 	// ---- 2. Clear spheres ----
 	worldScene.spheres.clear();
@@ -58,55 +60,53 @@ void SceneManager::LoadScene(int id, Tmpl8::Scene& worldScene,
 	if (def.gridBuilder)
 		def.gridBuilder(worldScene);
 
-	// ---- 4. Load .vox files (cached) and create instances ----
-	// Map: file path → index of first VoxelObject created from that file
-	std::unordered_map<std::string, int> voxCache;
-
-	for (const auto& obj : def.voxObjects)
+	// ---- 4. Load .vox files (only if grid is active) ----
+	if (def.useVoxelGrid)
 	{
-		if (obj.voxFile.empty()) continue;
+		std::unordered_map<std::string, int> voxCache;
 
-		// Load file only once — reuse object index for duplicates
-		int firstObjIdx;
-		auto it = voxCache.find(obj.voxFile);
-		if (it != voxCache.end())
+		for (const auto& obj : def.voxObjects)
 		{
-			firstObjIdx = it->second;
-		}
-		else
-		{
-			firstObjIdx = (int)worldScene.voxelObjects.size();
-			VoxLoader::Load(obj.voxFile.c_str(), worldScene);
-			voxCache[obj.voxFile] = firstObjIdx;
-		}
+			if (obj.voxFile.empty()) continue;
 
-		// Create instance(s) for each object in the file
-		// (most .vox files contain 1 model, but multi-model files
-		//  produce multiple VoxelObjects from firstObjIdx onward)
-		int objCount = (int)worldScene.voxelObjects.size() - firstObjIdx;
-		for (int k = 0; k < objCount; k++)
-		{
-			int objIdx = firstObjIdx + k;
-
-			if (obj.flatten)
+			int firstObjIdx;
+			auto it = voxCache.find(obj.voxFile);
+			if (it != voxCache.end())
 			{
-				float3 rotRad = obj.rotation * (PI / 180.0f);
-				VoxelFactory::FlattenInstance(
-					worldScene, objIdx,
-					obj.position, rotRad, obj.scale
-				);
+				firstObjIdx = it->second;
 			}
 			else
 			{
-				VoxelFactory::CreateInstance(
-					worldScene, objIdx,
-					obj.position, obj.rotation, obj.scale
-				);
+				firstObjIdx = (int)worldScene.voxelObjects.size();
+				VoxLoader::Load(obj.voxFile.c_str(), worldScene);
+				voxCache[obj.voxFile] = firstObjIdx;
+			}
+
+			int objCount = (int)worldScene.voxelObjects.size() - firstObjIdx;
+			for (int k = 0; k < objCount; k++)
+			{
+				int objIdx = firstObjIdx + k;
+
+				if (obj.flatten)
+				{
+					float3 rotRad = obj.rotation * (PI / 180.0f);
+					VoxelFactory::FlattenInstance(
+						worldScene, objIdx,
+						obj.position, rotRad, obj.scale
+					);
+				}
+				else
+				{
+					VoxelFactory::CreateInstance(
+						worldScene, objIdx,
+						obj.position, obj.rotation, obj.scale
+					);
+				}
 			}
 		}
 	}
 
-	// ---- 5. Place spheres ----
+	// ---- 5. Place spheres (always, even without grid) ----
 	for (const auto& s : def.spheres)
 		worldScene.spheres.push_back({ s.center, s.radius, s.material });
 
@@ -157,8 +157,6 @@ void SceneManager::LoadScene(int id, Tmpl8::Scene& worldScene,
 			testRay.t, testRay.materialIndex, testRay.instanceIndex, testRay.axis);
 	}
 
-
-
 	// ---- 10. Done ----
 	currentID = id;
 	printf("[SceneManager] Loaded '%s' in %.1fms  %d voxObj, %d voxInst, %d sph, %d lights\n",
@@ -180,7 +178,6 @@ void SceneManager::UI(Tmpl8::Scene& worldScene, Tmpl8::Camera& camera,
 	if (!ImGui::CollapsingHeader("Scene Manager", ImGuiTreeNodeFlags_DefaultOpen))
 		return;
 
-	// ── Scene selector: tab-style buttons with F-key hints ──────────────
 	ImGui::Text("Scenes");
 	ImGui::SameLine();
 	ImGui::TextDisabled("(F1-F%d)", (int)scenes.size());
@@ -216,7 +213,6 @@ void SceneManager::UI(Tmpl8::Scene& worldScene, Tmpl8::Camera& camera,
 	ImGui::Separator();
 	ImGui::Spacing();
 
-	// ── Scene info bar ──────────────────────────────────────────────────
 	ImGui::TextDisabled("Active:");
 	ImGui::SameLine();
 	ImGui::Text("%s", def.name);
@@ -230,7 +226,6 @@ void SceneManager::UI(Tmpl8::Scene& worldScene, Tmpl8::Camera& camera,
 
 	ImGui::Spacing();
 
-	// ── Camera ──────────────────────────────────────────────────────────
 	if (ImGui::TreeNode("Camera##scn"))
 	{
 		bool changed = false;
@@ -245,7 +240,6 @@ void SceneManager::UI(Tmpl8::Scene& worldScene, Tmpl8::Camera& camera,
 		ImGui::TreePop();
 	}
 
-	// ── Sky ─────────────────────────────────────────────────────────────
 	if (ImGui::TreeNode("Sky##scn"))
 	{
 		bool changed = false;
@@ -264,7 +258,6 @@ void SceneManager::UI(Tmpl8::Scene& worldScene, Tmpl8::Camera& camera,
 		ImGui::TreePop();
 	}
 
-	// ── Per-scene custom UI ─────────────────────────────────────────────
 	if (def.uiCallback)
 		def.uiCallback(def, worldScene, resetAccumulator);
 }

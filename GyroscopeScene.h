@@ -1,15 +1,17 @@
 // ============================================================
-// GyroscopeScene.h — Multi-Axis Gyroscope: 1000 Spheres
+// GyroscopeScene.h — 3-Axis Gimbal Gyroscope: 1000 Spheres
 // ============================================================
-// Three orbital rings on different tilted axes rotate around a
-// single large flickering red emissive warning sphere.
+// Narrative animation sequence:
+//   Phase 0 — ORDER:       Clean 3-axis gimbal, moderate speed
+//   Phase 1 — CONVERGE:    Middle gimbal drifts toward outer (lock approaching)
+//   Phase 2 — GIMBAL LOCK: Two axes aligned, system oscillates trying to escape
+//   Phase 3 — SPIN OUT:    Uncontrollable acceleration, everything spins wildly
+//   Phase 4 — FREEZE:      Sudden deceleration to total stop
+//   Phase 5 — COLLAPSE:    Orbits decay, spheres scatter, order dies
+//   Then loops back to ORDER.
 //
-// Style: Side Order sterile minimalist dystopia.
-//   ~80% matte off-white Lambertian
-//   ~10% chrome Metal
-//   ~5%  Dielectric glass
-//   ~3%  muted pastel Emissive (coral pink, pale lavender, muted teal)
-//   1    large center sphere — slowly flickering red emissive
+// Thematic: "Order tried to control everything. It locked up.
+//            It panicked. It lost control. It broke."
 //
 // Register with:
 //     mgr.AddScene(GameScenes::GyroscopeShowcase());
@@ -21,8 +23,7 @@
 namespace GameScenes
 {
 
-	// ── Material IDs (indexes into scene.materials[]) ─────────
-	// Using slots in the random material range — overwritten at init.
+	// ── Material IDs ──────────────────────────────────────────
 	static constexpr uint MAT_GYRO_WHITE = MAT_RANDOM_START;
 	static constexpr uint MAT_GYRO_CHROME = MAT_RANDOM_START + 1;
 	static constexpr uint MAT_GYRO_GLASS = MAT_RANDOM_START + 2;
@@ -32,43 +33,79 @@ namespace GameScenes
 	static constexpr uint MAT_GYRO_CENTER = MAT_RANDOM_START + 6;
 
 
-	// ── Gyroscope animation state ─────────────────────────────
+	// ── Animation phases ──────────────────────────────────────
+	enum GyroPhase
+	{
+		GYRO_ORDER = 0,       //  0 – 10s  clean rotation
+		GYRO_CONVERGE,        // 10 – 14s  gimbals converging
+		GYRO_LOCK,            // 14 – 18s  gimbal lock, panic oscillation
+		GYRO_SPINOUT,         // 18 – 21s  uncontrolled spin
+		GYRO_FREEZE,          // 21 – 23s  sudden stop
+		GYRO_COLLAPSE,        // 23 – 30s  orbits decay, spheres scatter
+	};
+
+	// Phase timing (seconds from cycle start)
+	static constexpr float T_CONVERGE = 10.0f;
+	static constexpr float T_LOCK = 14.0f;
+	static constexpr float T_SPINOUT = 18.0f;
+	static constexpr float T_FREEZE = 21.0f;
+	static constexpr float T_COLLAPSE = 23.0f;
+	static constexpr float T_RESET = 31.0f;
+
+
+	// ── Gyroscope state ───────────────────────────────────────
 
 	struct GyroState
 	{
-		// Ring definitions
 		struct Ring
 		{
-			float tilt;       // radians — rotation of the ring plane around X
-			float speed;      // radians/s — orbital speed
-			int   count;      // spheres on this ring
-			float radius;     // orbital radius in world units
+			float tiltX;
+			float tiltZ;
+			float speed;
+			int   count;
+			float radius;
+			int   gimbal;
 		};
 
-		static constexpr int NUM_RINGS = 5;
+		static constexpr int NUM_RINGS = 6;
+		static constexpr int MAX_SPHERES = 6 * 167 + 1;  // 1003
 
 		Ring rings[NUM_RINGS] = {
-			{ 0.10f,  0.30f, 200, 0.40f },   // near-horizontal
-			{ 0.80f, -0.22f, 200, 0.36f },   // tilted, reverse
-			{ 1.50f,  0.40f, 200, 0.32f },   // steep tilt
-			{ 2.20f, -0.35f, 200, 0.38f },   // another axis, reverse
-			{ 2.90f,  0.28f, 200, 0.34f },   // fifth axis
+			{  0.00f,       0.00f,       0.30f,  167, 0.42f, 0 },
+			{  0.00f,       0.00f,      -0.30f,  167, 0.38f, 0 },
+			{  PI * 0.5f,   0.00f,       0.25f,  167, 0.36f, 1 },
+			{  PI * 0.5f,   0.00f,      -0.25f,  167, 0.32f, 1 },
+			{  0.00f,       PI * 0.5f,   0.35f,  167, 0.35f, 2 },
+			{  0.00f,       PI * 0.5f,  -0.35f,  167, 0.31f, 2 },
 		};
 
+		float gimbalPrecession[3] = { 0.12f, 0.10f, 0.14f };
+
 		float time = 0.0f;
+		float cycleTime = 0.0f;   // resets each loop
 		bool  initialized = false;
-
-		// Flickering
 		float flickerPhase = 0.0f;
+		GyroPhase phase = GYRO_ORDER;
 
-		// Sphere radius
 		float orbitSphereRadius = 0.005f;
 		float centerSphereRadius = 0.14f;
 
-		// UI-tweakable
 		float globalSpeed = 1.0f;
+		float precessionSpeed = 1.0f;
 
-		// Pre-assigned material per sphere (set once at init, stable across frames)
+		// Chaos state — per-sphere velocity for collapse phase
+		std::vector<float3> chaosVelocity;
+		std::vector<float3> chaosOffset;
+		bool chaosInitialized = false;
+		float collapseTime = 0.0f;
+
+		// Animation overrides (driven by phase logic)
+		float animOrbitMul = 1.0f;   // orbit speed multiplier
+		float animPrecessMul = 1.0f;   // precession speed multiplier
+		float animLockBlend = 0.0f;   // 0=free, 1=locked (middle→outer)
+		float animPanicWobble = 0.0f;   // oscillation amplitude during lock
+		float animRadiusDecay = 1.0f;   // 1=normal, >1=expanding (collapse)
+
 		std::vector<uint> sphereMaterials;
 
 		void AssignMaterials()
@@ -78,7 +115,6 @@ namespace GameScenes
 			for (int i = 0; i < NUM_RINGS; i++) total += rings[i].count;
 			sphereMaterials.reserve(total);
 
-			// Deterministic seed for reproducible look
 			uint seed = 42;
 			for (int i = 0; i < total; i++)
 			{
@@ -93,6 +129,52 @@ namespace GameScenes
 				sphereMaterials.push_back(mat);
 			}
 		}
+
+		void InitChaos()
+		{
+			if (chaosInitialized) return;
+			int total = 0;
+			for (int i = 0; i < NUM_RINGS; i++) total += rings[i].count;
+			total++; // center sphere
+
+			chaosVelocity.resize(total);
+			chaosOffset.resize(total);
+			uint seed = 1234;
+			for (int i = 0; i < total; i++)
+			{
+				// Random outward drift + tumble
+				chaosVelocity[i] = float3(
+					(RandomFloat(seed) - 0.5f) * 0.15f,
+					(RandomFloat(seed) - 0.5f) * 0.15f,
+					(RandomFloat(seed) - 0.5f) * 0.15f
+				);
+				// Add slight downward gravity feel
+				chaosVelocity[i].y -= 0.03f;
+				chaosOffset[i] = float3(0, 0, 0);
+			}
+			collapseTime = 0.0f;
+			chaosInitialized = true;
+		}
+
+		void ResetChaos()
+		{
+			chaosOffset.clear();
+			chaosVelocity.clear();
+			chaosInitialized = false;
+			collapseTime = 0.0f;
+		}
+
+		void ResetCycle()
+		{
+			cycleTime = 0.0f;
+			phase = GYRO_ORDER;
+			animOrbitMul = 1.0f;
+			animPrecessMul = 1.0f;
+			animLockBlend = 0.0f;
+			animPanicWobble = 0.0f;
+			animRadiusDecay = 1.0f;
+			ResetChaos();
+		}
 	};
 
 
@@ -100,81 +182,54 @@ namespace GameScenes
 
 	inline void SetupGyroscopeMaterials(Tmpl8::Scene& scene)
 	{
-		// Off-white Lambertian — Side Order's primary surface
-		// Slightly warm: RGB 248/247/244 → ~(0.973, 0.969, 0.957)
 		{
-			Material m;
-			m.type = MaterialType::Lambertian;
-			m.albedo = float3(0.973f, 0.969f, 0.957f);
-			m.roughness = 0.35f;
+			Material m; m.type = MaterialType::Lambertian;
+			m.albedo = float3(0.973f, 0.969f, 0.957f); m.roughness = 0.35f;
 			scene.materials[MAT_GYRO_WHITE] = m;
 		}
-
-		// Chrome Metal — clinical, reflective
 		{
-			Material m;
-			m.type = MaterialType::Metal;
-			m.albedo = float3(0.92f, 0.92f, 0.94f);
-			m.roughness = 0.02f;
-			m.metallic = 1.0f;
+			Material m; m.type = MaterialType::Metal;
+			m.albedo = float3(0.92f, 0.92f, 0.94f); m.roughness = 0.02f; m.metallic = 1.0f;
 			scene.materials[MAT_GYRO_CHROME] = m;
 		}
-
-		// Dielectric glass — ghost spheres
 		{
-			Material m;
-			m.type = MaterialType::Dielectric;
-			m.albedo = float3(0.98f, 0.98f, 1.0f);
-			m.ior = 1.45f;
+			Material m; m.type = MaterialType::Dielectric;
+			m.albedo = float3(0.98f, 0.98f, 1.0f); m.ior = 1.45f;
 			scene.materials[MAT_GYRO_GLASS] = m;
 		}
-
-		// Emissive Coral Pink — #E8A0A0 desaturated
 		{
-			Material m;
-			m.type = MaterialType::Emissive;
-			m.albedo = float3(0.91f, 0.63f, 0.63f);
-			m.emission = float3(0.91f, 0.63f, 0.63f);
-			m.emissionStr = 2.0f;
+			Material m; m.type = MaterialType::Emissive;
+			m.albedo = float3(0.91f, 0.63f, 0.63f); m.emission = m.albedo; m.emissionStr = 2.0f;
 			scene.materials[MAT_GYRO_EMIT_ROSE] = m;
 		}
-
-		// Emissive Pale Lavender — #C8B8D8 desaturated
 		{
-			Material m;
-			m.type = MaterialType::Emissive;
-			m.albedo = float3(0.78f, 0.72f, 0.85f);
-			m.emission = float3(0.78f, 0.72f, 0.85f);
-			m.emissionStr = 2.0f;
+			Material m; m.type = MaterialType::Emissive;
+			m.albedo = float3(0.78f, 0.72f, 0.85f); m.emission = m.albedo; m.emissionStr = 2.0f;
 			scene.materials[MAT_GYRO_EMIT_LAV] = m;
 		}
-
-		// Emissive Muted Teal — #8CB8B0 desaturated
 		{
-			Material m;
-			m.type = MaterialType::Emissive;
-			m.albedo = float3(0.55f, 0.72f, 0.69f);
-			m.emission = float3(0.55f, 0.72f, 0.69f);
-			m.emissionStr = 2.0f;
+			Material m; m.type = MaterialType::Emissive;
+			m.albedo = float3(0.55f, 0.72f, 0.69f); m.emission = m.albedo; m.emissionStr = 2.0f;
 			scene.materials[MAT_GYRO_EMIT_TEAL] = m;
 		}
-
-		// Center sphere — deep Signal Red emissive
-		// Reinhard x/(1+x) compresses channels non-linearly:
-		// (1.0, 0.008, 0.003)*10 → HDR(10, 0.08, 0.03) → LDR(0.91, 0.07, 0.03) = deep red
-		// Any more green and Reinhard turns it orange!
 		{
-			Material m;
-			m.type = MaterialType::Emissive;
-			m.albedo = float3(1.0f, 0.008f, 0.003f);
-			m.emission = float3(1.0f, 0.008f, 0.003f);
-			m.emissionStr = 10.0f;
+			Material m; m.type = MaterialType::Emissive;
+			m.albedo = float3(1.0f, 0.008f, 0.003f); m.emission = m.albedo; m.emissionStr = 10.0f;
 			scene.materials[MAT_GYRO_CENTER] = m;
 		}
 	}
 
 
-	// ── Rebuild sphere positions for current time ─────────────
+	// ── Smooth step helper ────────────────────────────────────
+	inline float smoothstep(float a, float b, float t)
+	{
+		float x = (t - a) / (b - a);
+		x = x < 0.0f ? 0.0f : (x > 1.0f ? 1.0f : x);
+		return x * x * (3.0f - 2.0f * x);
+	}
+
+
+	// ── Rebuild sphere positions ──────────────────────────────
 
 	inline void RebuildGyroscopeSpheres(
 		Tmpl8::Scene& scene,
@@ -183,47 +238,116 @@ namespace GameScenes
 		scene.spheres.clear();
 
 		const float3 center(0.5f, 0.5f, 0.5f);
+		const float t = state.time;
 		int sphereIdx = 0;
+
+		// ── Gimbal angles (nested) ────────────────────────────
+		float aY = t * state.gimbalPrecession[0] * state.precessionSpeed * state.animPrecessMul;
+		float aX = t * state.gimbalPrecession[1] * state.precessionSpeed * state.animPrecessMul;
+		float aZ = t * state.gimbalPrecession[2] * state.precessionSpeed * state.animPrecessMul;
+
+		// ── Gimbal lock: ALL three axes collapse to same plane ──
+		// True gimbal lock = all rings coplanar. Middle and inner
+		// both converge toward outer's orientation, losing all DOF.
+		if (state.animLockBlend > 0.0f)
+		{
+			float blend = state.animLockBlend;
+			// Middle (X) collapses toward zero (aligns with outer's plane)
+			aX = aX * (1.0f - blend) + 0.0f * blend;
+			// Inner (Z) collapses toward zero (aligns with outer's plane)
+			aZ = aZ * (1.0f - blend) + 0.0f * blend;
+		}
+
+		// ── Panic wobble: violent oscillation during lock ──────
+		if (state.animPanicWobble > 0.0f)
+		{
+			float w = state.animPanicWobble;
+			float freq = t * 12.0f;  // fast oscillation
+			aX += w * sinf(freq * 2.1f);
+			aY += w * sinf(freq * 1.7f + 1.0f);
+			aZ += w * sinf(freq * 3.3f + 2.0f);
+		}
+
+		const float cyG = cosf(aY), syG = sinf(aY);
+		const float cxG = cosf(aX), sxG = sinf(aX);
+		const float czG = cosf(aZ), szG = sinf(aZ);
 
 		for (int r = 0; r < GyroState::NUM_RINGS; r++)
 		{
 			const auto& ring = state.rings[r];
-			const float tilt = ring.tilt;
-			const float cosTilt = cosf(tilt);
-			const float sinTilt = sinf(tilt);
+			const int g = ring.gimbal;
+			const float radius = ring.radius * state.animRadiusDecay;
+
+			// During gimbal lock, blend ALL base tilts toward the outer
+			// gimbal's plane (tiltX=0, tiltZ=0) — true coplanar collapse
+			float bTiltX = ring.tiltX;
+			float bTiltZ = ring.tiltZ;
+			if (state.animLockBlend > 0.0f)
+			{
+				bTiltX = ring.tiltX * (1.0f - state.animLockBlend);
+				bTiltZ = ring.tiltZ * (1.0f - state.animLockBlend);
+			}
+
+			const float cx = cosf(bTiltX), sx = sinf(bTiltX);
+			const float cz = cosf(bTiltZ), sz = sinf(bTiltZ);
 
 			for (int i = 0; i < ring.count; i++)
 			{
-				// Angle around the ring
 				float angle = (float)i / (float)ring.count * 2.0f * PI
-					+ state.time * ring.speed * state.globalSpeed;
+					+ t * ring.speed * state.globalSpeed * state.animOrbitMul;
 
-				// Position on a circle in the XZ plane
-				float x = cosf(angle) * ring.radius;
-				float z = sinf(angle) * ring.radius;
-				float y = 0.0f;
+				float px = cosf(angle) * radius;
+				float py = 0.0f;
+				float pz = sinf(angle) * radius;
 
-				// Tilt the ring: rotate (y,z) around X axis
-				float ty = y * cosTilt - z * sinTilt;
-				float tz = y * sinTilt + z * cosTilt;
+				// Base tilt
+				float ty = py * cx - pz * sx;
+				float tz = py * sx + pz * cx;
+				py = ty; pz = tz;
+				float tx = px * cz - py * sz;
+				ty = px * sz + py * cz;
+				px = tx; py = ty;
 
-				float3 pos = center + float3(x, ty, tz);
+				// Nested gimbal chain
+				tx = px * cyG + pz * syG;
+				tz = -px * syG + pz * cyG;
+				px = tx; pz = tz;
 
-				uint mat = state.sphereMaterials[sphereIdx];
+				if (g >= 1)
+				{
+					ty = py * cxG - pz * sxG;
+					tz = py * sxG + pz * cxG;
+					py = ty; pz = tz;
+				}
+				if (g >= 2)
+				{
+					tx = px * czG - py * szG;
+					ty = px * szG + py * czG;
+					px = tx; py = ty;
+				}
+
+				float3 pos = center + float3(px, py, pz);
+
+				// Apply chaos offset during collapse
+				if (state.chaosInitialized && sphereIdx < (int)state.chaosOffset.size())
+					pos += state.chaosOffset[sphereIdx];
 
 				scene.spheres.push_back({
 					pos,
 					state.orbitSphereRadius,
-					mat
+					state.sphereMaterials[sphereIdx]
 					});
-
 				sphereIdx++;
 			}
 		}
 
-		// Center sphere — the warning
+		// Center sphere
+		float3 centerPos = center;
+		if (state.chaosInitialized && sphereIdx < (int)state.chaosOffset.size())
+			centerPos += state.chaosOffset[sphereIdx];
+
 		scene.spheres.push_back({
-			center,
+			centerPos,
 			state.centerSphereRadius,
 			MAT_GYRO_CENTER
 			});
@@ -240,50 +364,43 @@ namespace GameScenes
 	{
 		SceneDef s;
 		s.name = "Gyroscope";
+		s.useVoxelGrid = false;
 
-		// ── Camera — pulled far back, looking at center ──────
-		s.camPos = float3(0.5f, 0.55f, -0.15f);
-		s.camTarget = float3(0.5f, 0.48f, 0.50f);
+		s.camPos = float3(0.5f, 0.46f, 0.25f);
+		s.camTarget = float3(0.5f, 0.45f, 0.5f);
 
-		// ── Sky — overcast white, barely any sun ──────────────
-		// Clinical, shadowless, institutional
+		const float3 c(0.5f, 0.5f, 0.5f);
+		s.splinePoints = {
+			c + float3(0.00f,  0.15f, -0.85f),
+			c + float3(0.70f, -0.10f, -0.50f),
+			c + float3(0.85f, -0.35f,  0.00f),
+			c + float3(0.30f, -0.40f,  0.80f),
+			c + float3(-0.20f, 0.20f,  0.85f),
+			c + float3(-0.15f, 0.90f,  0.20f),
+			c + float3(-0.80f, 0.10f, -0.30f),
+			c + float3(-0.40f,-0.05f, -0.50f),
+			c + float3(0.00f,  0.15f, -0.85f),
+		};
+
 		s.sky.sunDir = normalize(float3(0.2f, -0.8f, 0.1f));
 		s.sky.sunColor = float3(0.95f, 0.93f, 0.90f);
 		s.sky.sunIntensity = 0.4f;
 		s.sky.timeOfDay = 0.30f;
 		s.sky.animate = false;
 
-		// ── Display platform (static, baked into grid) ────────
-		s.voxObjects.push_back({
-			"assets/Showcase/display_platform.vox",
-			float3(256, 120, 256),
-			float3(0, 0, 0),
-			float3(1, 1, 1), true
-			});
-
-		// ── Lights — 2 only for 60fps budget ─────────────────
-		// Each point light = 1 shadow ray per voxel hit.
-		// 6 lights killed the budget; 2 keeps clinical look.
 		auto addLight = [&](float3 pos, float3 col)
 			{
 				PointLight l;
-				l.position = pos;
-				l.color = col;
-				l.enabled = true;
+				l.position = pos; l.color = col; l.enabled = true;
 				s.pointLights.push_back(l);
 			};
-
-		// Overhead — dimmed clinical wash, cool-toned
 		addLight(float3(0.5f, 0.90f, 0.5f), float3(0.55f, 0.55f, 0.60f));
-		// Front fill — subtle, prevents total silhouette
 		addLight(float3(0.5f, 0.50f, 0.05f), float3(0.25f, 0.24f, 0.26f));
-		// Center warning — pure deep red, the dominant colour in the scene
 		addLight(float3(0.5f, 0.5f, 0.5f), float3(2.0f, 0.03f, 0.01f));
 
-		// ── Shared state ──────────────────────────────────────
 		auto gyro = std::make_shared<GyroState>();
 
-		// ── Tick callback — animate every frame ───────────────
+		// ── Tick — phase-driven animation ─────────────────────
 		s.tickCallback = [gyro](SceneDef& def, Tmpl8::Scene& scene,
 			float deltaTime, std::function<void()> resetAcc)
 			{
@@ -299,77 +416,198 @@ namespace GameScenes
 
 				float dt = deltaTime * 0.001f;
 				gyro->time += dt;
+				gyro->cycleTime += dt;
+				float ct = gyro->cycleTime;
 
-				// ── Flicker the center sphere's emission ──────────
-				// Slow sinusoidal pulse: 0.8s period
+				// ── Phase state machine ───────────────────────────
+				if (ct >= T_RESET)
+				{
+					gyro->ResetCycle();
+					ct = 0.0f;
+				}
+
+				if (ct < T_CONVERGE)
+				{
+					// ── ORDER: clean rotation, moderate speed ─────
+					gyro->phase = GYRO_ORDER;
+					gyro->animOrbitMul = 1.5f;
+					gyro->animPrecessMul = 1.0f;
+					gyro->animLockBlend = 0.0f;
+					gyro->animPanicWobble = 0.0f;
+					gyro->animRadiusDecay = 1.0f;
+				}
+				else if (ct < T_LOCK)
+				{
+					// ── CONVERGE: middle gimbal drifts toward outer
+					gyro->phase = GYRO_CONVERGE;
+					float p = (ct - T_CONVERGE) / (T_LOCK - T_CONVERGE);
+					gyro->animLockBlend = smoothstep(0.0f, 1.0f, p);
+					gyro->animOrbitMul = 1.5f + 0.5f * p;  // slightly faster
+					gyro->animPrecessMul = 1.0f + 0.5f * p;
+				}
+				else if (ct < T_SPINOUT)
+				{
+					// ── GIMBAL LOCK: violent oscillation ──────────
+					gyro->phase = GYRO_LOCK;
+					float p = (ct - T_LOCK) / (T_SPINOUT - T_LOCK);
+					gyro->animLockBlend = 1.0f;
+					gyro->animPanicWobble = 0.3f + 0.7f * p;  // growing panic
+					gyro->animOrbitMul = 2.0f + 3.0f * p;   // accelerating
+					gyro->animPrecessMul = 1.5f + 2.0f * p;
+				}
+				else if (ct < T_FREEZE)
+				{
+					// ── SPIN OUT: uncontrollable speed ────────────
+					gyro->phase = GYRO_SPINOUT;
+					float p = (ct - T_SPINOUT) / (T_FREEZE - T_SPINOUT);
+					gyro->animLockBlend = 1.0f - 0.3f * p;  // partially breaks free
+					gyro->animPanicWobble = 1.0f + 1.5f * p;   // maximum wobble
+					gyro->animOrbitMul = 5.0f + 10.0f * p;  // insane speed
+					gyro->animPrecessMul = 3.5f + 5.0f * p;
+				}
+				else if (ct < T_COLLAPSE)
+				{
+					// ── FREEZE: sudden deceleration to stop ───────
+					gyro->phase = GYRO_FREEZE;
+					float p = (ct - T_FREEZE) / (T_COLLAPSE - T_FREEZE);
+					float brake = 1.0f - smoothstep(0.0f, 1.0f, p);
+					gyro->animOrbitMul = 15.0f * brake;
+					gyro->animPrecessMul = 8.5f * brake;
+					gyro->animPanicWobble = 2.5f * brake;
+					gyro->animLockBlend = 0.7f * brake;
+				}
+				else
+				{
+					// ── COLLAPSE: orbits decay, spheres scatter ───
+					gyro->phase = GYRO_COLLAPSE;
+					gyro->animOrbitMul = 0.0f;
+					gyro->animPrecessMul = 0.0f;
+					gyro->animPanicWobble = 0.0f;
+					gyro->animLockBlend = 0.0f;
+
+					gyro->InitChaos();
+					gyro->collapseTime += dt;
+
+					// Accelerate chaos over time
+					float chaos_t = gyro->collapseTime;
+					float accel = 1.0f + chaos_t * 0.5f;
+					for (int i = 0; i < (int)gyro->chaosOffset.size(); i++)
+					{
+						gyro->chaosOffset[i] += gyro->chaosVelocity[i] * dt * accel;
+						// Add slight gravity
+						gyro->chaosVelocity[i].y -= 0.02f * dt;
+					}
+
+					// Radius slowly expands (orbits "unravel")
+					gyro->animRadiusDecay = 1.0f + chaos_t * 0.3f;
+				}
+
+				// ── Flicker — intensity follows phase ─────────────
 				gyro->flickerPhase += dt;
-				float pulse = 0.4f + 0.6f * powf(
+				float basePulse = 0.4f + 0.6f * powf(
 					0.5f * (1.0f + sinf(gyro->flickerPhase * 2.0f * PI / 0.8f)), 2.0f);
 
+				// During panic/spinout, flicker gets erratic
+				float flickerMul = 1.0f;
+				if (gyro->phase == GYRO_LOCK || gyro->phase == GYRO_SPINOUT)
+				{
+					float erratic = sinf(gyro->time * 30.0f) * sinf(gyro->time * 47.0f);
+					flickerMul = 1.0f + 1.5f * fabsf(erratic);
+				}
+				else if (gyro->phase == GYRO_FREEZE)
+				{
+					flickerMul = 0.3f; // dims during freeze
+				}
+				else if (gyro->phase == GYRO_COLLAPSE)
+				{
+					// Dying flicker — fading out
+					float fade = 1.0f - gyro->collapseTime / (T_RESET - T_COLLAPSE);
+					flickerMul = max(0.0f, fade * 0.5f);
+				}
+
 				Material& centerMat = scene.materials[MAT_GYRO_CENTER];
-				centerMat.emissionStr = 6.0f + 8.0f * pulse;   // 6–14 range
-				// Reinhard makes even small green/blue look orange at high intensity,
-				// so keep them extremely low. At peak (str=14):
-				// HDR(14, 0.14, 0.06) → LDR(0.93, 0.12, 0.05) = deep red
+				centerMat.emissionStr = (6.0f + 8.0f * basePulse) * flickerMul;
 				float r = 1.00f;
-				float g = 0.006f + 0.004f * pulse;
-				float b = 0.002f + 0.002f * pulse;
+				float g = 0.006f + 0.004f * basePulse;
+				float b = 0.002f + 0.002f * basePulse;
 				centerMat.emission = float3(r, g, b);
 				centerMat.albedo = float3(r, g, b);
 
-				// Note: the center point light stays constant (red wash on platform).
-				// The emissive sphere itself flickers visually via emissionStr.
-				// fastSphereShading means orbit spheres skip lights anyway.
-
-				// ── Rebuild all sphere positions ──────────────────
+				// ── Rebuild ───────────────────────────────────────
 				RebuildGyroscopeSpheres(scene, *gyro);
 				if (resetAcc) resetAcc();
 			};
 
-		// ── UI callback ───────────────────────────────────────
+		// ── UI ────────────────────────────────────────────────
 		s.uiCallback = [gyro](SceneDef& def, Tmpl8::Scene& scene,
 			std::function<void()> resetAcc)
 			{
 				if (!ImGui::CollapsingHeader("Gyroscope", ImGuiTreeNodeFlags_DefaultOpen))
 					return;
 
-				ImGui::Text("%d spheres  |  %d rings  |  t = %.1fs",
-					(int)scene.spheres.size(), GyroState::NUM_RINGS, gyro->time);
+				// Phase name
+				static const char* phaseNames[] = {
+					"ORDER", "CONVERGE", "GIMBAL LOCK", "SPIN OUT", "FREEZE", "COLLAPSE"
+				};
+				ImVec4 phaseColor = ImVec4(0.3f, 0.8f, 0.3f, 1.0f); // green = order
+				if (gyro->phase == GYRO_CONVERGE) phaseColor = ImVec4(0.9f, 0.7f, 0.2f, 1.0f);
+				if (gyro->phase == GYRO_LOCK)     phaseColor = ImVec4(0.9f, 0.3f, 0.1f, 1.0f);
+				if (gyro->phase == GYRO_SPINOUT)  phaseColor = ImVec4(1.0f, 0.1f, 0.1f, 1.0f);
+				if (gyro->phase == GYRO_FREEZE)   phaseColor = ImVec4(0.5f, 0.5f, 0.8f, 1.0f);
+				if (gyro->phase == GYRO_COLLAPSE) phaseColor = ImVec4(0.4f, 0.4f, 0.4f, 1.0f);
 
-				ImGui::Spacing();
+				ImGui::TextColored(phaseColor, "Phase: %s", phaseNames[gyro->phase]);
+				ImGui::SameLine();
+				ImGui::TextDisabled("%.1f / %.0fs", gyro->cycleTime, T_RESET);
 
-				// ── Color legend ──────────────────────────────────
-				auto dot = [](float3 c, const char* label)
-					{
-						ImGui::ColorButton(label,
-							ImVec4(c.x, c.y, c.z, 1.0f),
-							ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoPicker,
-							ImVec2(10, 10));
-						ImGui::SameLine();
-						ImGui::TextDisabled("%s", label);
-					};
-				dot(float3(0.97f, 0.97f, 0.96f), "White (80%)");
-				ImGui::SameLine();
-				dot(float3(0.92f, 0.92f, 0.94f), "Chrome (10%)");
-				ImGui::SameLine();
-				dot(float3(0.78f, 0.18f, 0.15f), "Warning");
+				// Progress bar
+				ImGui::ProgressBar(gyro->cycleTime / T_RESET, ImVec2(-1, 3));
+
+				ImGui::Text("%d spheres  |  cycle t = %.1fs",
+					(int)scene.spheres.size(), gyro->cycleTime);
 
 				ImGui::Spacing();
 
 				bool changed = false;
-				changed |= ImGui::SliderFloat("Global Speed", &gyro->globalSpeed, 0.0f, 3.0f, "%.2f");
+				changed |= ImGui::SliderFloat("Orbit Speed", &gyro->globalSpeed, 0.0f, 3.0f, "%.2f");
+				changed |= ImGui::SliderFloat("Precession Speed", &gyro->precessionSpeed, 0.0f, 3.0f, "%.2f");
+
+				if (ImGui::Button("Reset Cycle"))
+				{
+					gyro->ResetCycle();
+					changed = true;
+				}
 
 				ImGui::Spacing();
 
+				if (ImGui::TreeNode("Animation State"))
+				{
+					ImGui::TextDisabled("Orbit mul:    %.2f", gyro->animOrbitMul);
+					ImGui::TextDisabled("Precess mul:  %.2f", gyro->animPrecessMul);
+					ImGui::TextDisabled("Lock blend:   %.2f", gyro->animLockBlend);
+					ImGui::TextDisabled("Panic wobble: %.2f", gyro->animPanicWobble);
+					ImGui::TextDisabled("Radius decay: %.2f", gyro->animRadiusDecay);
+					ImGui::TreePop();
+				}
+
+				if (ImGui::TreeNode("Gimbal Precession"))
+				{
+					changed |= ImGui::SliderFloat("Outer (Y)", &gyro->gimbalPrecession[0], -0.5f, 0.5f, "%.3f");
+					changed |= ImGui::SliderFloat("Middle (X)", &gyro->gimbalPrecession[1], -0.5f, 0.5f, "%.3f");
+					changed |= ImGui::SliderFloat("Inner (Z)", &gyro->gimbalPrecession[2], -0.5f, 0.5f, "%.3f");
+					ImGui::TreePop();
+				}
+
 				if (ImGui::TreeNode("Ring Parameters"))
 				{
-					const char* names[] = { "Ring A", "Ring B", "Ring C", "Ring D", "Ring E" };
+					const char* names[] = { "XZ-A", "XZ-B", "XY-A", "XY-B", "YZ-A", "YZ-B" };
 					for (int i = 0; i < GyroState::NUM_RINGS; i++)
 					{
 						ImGui::PushID(i);
 						if (ImGui::TreeNode(names[i]))
 						{
-							changed |= ImGui::SliderFloat("Tilt (rad)", &gyro->rings[i].tilt, 0.0f, PI, "%.2f");
+							changed |= ImGui::SliderFloat("Tilt X", &gyro->rings[i].tiltX, 0.0f, PI * 2, "%.2f");
+							changed |= ImGui::SliderFloat("Tilt Z", &gyro->rings[i].tiltZ, 0.0f, PI * 2, "%.2f");
 							changed |= ImGui::SliderFloat("Speed", &gyro->rings[i].speed, -1.0f, 1.0f, "%.2f");
 							changed |= ImGui::SliderFloat("Radius", &gyro->rings[i].radius, 0.10f, 0.45f, "%.3f");
 							ImGui::TreePop();
@@ -381,8 +619,8 @@ namespace GameScenes
 
 				if (ImGui::TreeNode("Sphere Size"))
 				{
-					changed |= ImGui::SliderFloat("Orbit Radius", &gyro->orbitSphereRadius, 0.002f, 0.02f, "%.3f");
-					changed |= ImGui::SliderFloat("Center Radius", &gyro->centerSphereRadius, 0.01f, 0.06f, "%.3f");
+					changed |= ImGui::SliderFloat("Orbit", &gyro->orbitSphereRadius, 0.002f, 0.02f, "%.3f");
+					changed |= ImGui::SliderFloat("Center", &gyro->centerSphereRadius, 0.01f, 0.20f, "%.3f");
 					ImGui::TreePop();
 				}
 

@@ -558,6 +558,7 @@ void Scene::FindNearest(Ray& ray) const
     }
 
     // --- 2. World-grid DDA ---
+    if (voxelGridActive)
     {
         uint  hitMat = 0;
         int   hitAxis = -1;
@@ -574,36 +575,41 @@ void Scene::FindNearest(Ray& ray) const
     }
 
     // --- 3. Instanced voxel objects (flat TLAS loop) ---
-    for (int i = 0; i < (int)voxelInstances.size(); i++)
+
+    if (voxelGridActive)
     {
-        const VoxelInstance& inst = voxelInstances[i];
-        if (inst.matricesDirty) continue;
-        if (inst.modelIndex < 0 || inst.modelIndex >= (int)voxelObjects.size()) continue;
-
-        // World-space AABB rejection
-        float tEntry, tExit;
-        if (!RayAABB(ray.O, ray.rD, inst.worldAABBmin, inst.worldAABBmax, tEntry, tExit))
-            continue;
-        if (tEntry >= bestT) continue;
-
-        // Transform ray to object-local space — DO NOT normalize direction
-        const float3 localO = inst.worldToLocal.TransformPoint(ray.O);
-        const float3 localD = inst.worldToLocal.TransformVector(ray.D);
-
-        int     hitFace;
-        uint8_t hitVoxel;
-        const VoxelObject& obj = voxelObjects[inst.modelIndex];
-        float t = TraceObjectDDA(localO, localD, obj, bestT, hitFace, hitVoxel);
-
-        if (t < bestT)
+        for (int i = 0; i < (int)voxelInstances.size(); i++)
         {
-            bestT = t;
-            bestMatIdx = hitVoxel;     // palette index
-            bestAxis = hitFace;      // 0-5 face index
-            bestSphereIdx = -1;
-            bestInstanceIdx = i;
-            bestVoxel = hitVoxel;
+            const VoxelInstance& inst = voxelInstances[i];
+            if (inst.matricesDirty) continue;
+            if (inst.modelIndex < 0 || inst.modelIndex >= (int)voxelObjects.size()) continue;
+
+            // World-space AABB rejection
+            float tEntry, tExit;
+            if (!RayAABB(ray.O, ray.rD, inst.worldAABBmin, inst.worldAABBmax, tEntry, tExit))
+                continue;
+            if (tEntry >= bestT) continue;
+
+            // Transform ray to object-local space — DO NOT normalize direction
+            const float3 localO = inst.worldToLocal.TransformPoint(ray.O);
+            const float3 localD = inst.worldToLocal.TransformVector(ray.D);
+
+            int     hitFace;
+            uint8_t hitVoxel;
+            const VoxelObject& obj = voxelObjects[inst.modelIndex];
+            float t = TraceObjectDDA(localO, localD, obj, bestT, hitFace, hitVoxel);
+
+            if (t < bestT)
+            {
+                bestT = t;
+                bestMatIdx = hitVoxel;     // palette index
+                bestAxis = hitFace;      // 0-5 face index
+                bestSphereIdx = -1;
+                bestInstanceIdx = i;
+                bestVoxel = hitVoxel;
+            }
         }
+
     }
 
     // --- Write results into ray ---
@@ -623,28 +629,31 @@ void Scene::FindNearest(Ray& ray) const
 bool Scene::IsOccluded(Ray& ray) const
 {
     // World grid
-    uint dummyMat = 0;
-    int  dummyAxis = -1;
-    if (TraverseDDA<true>(ray, 0.f, dummyMat, dummyAxis))
-        return true;
-
-    // Instanced objects
-    for (int i = 0; i < (int)voxelInstances.size(); i++)
+    if (voxelGridActive)
     {
-        const VoxelInstance& inst = voxelInstances[i];
-        if (inst.matricesDirty) continue;
-        if (inst.modelIndex < 0 || inst.modelIndex >= (int)voxelObjects.size()) continue;
-
-        float tEntry, tExit;
-        if (!RayAABB(ray.O, ray.rD, inst.worldAABBmin, inst.worldAABBmax, tEntry, tExit))
-            continue;
-        if (tEntry >= ray.t) continue;
-
-        const float3 localO = inst.worldToLocal.TransformPoint(ray.O);
-        const float3 localD = inst.worldToLocal.TransformVector(ray.D);
-
-        if (TraceObjectDDA_Occlusion(localO, localD, voxelObjects[inst.modelIndex], ray.t))
+        uint dummyMat = 0;
+        int  dummyAxis = -1;
+        if (TraverseDDA<true>(ray, 0.f, dummyMat, dummyAxis))
             return true;
+
+        // Instanced objects
+        for (int i = 0; i < (int)voxelInstances.size(); i++)
+        {
+            const VoxelInstance& inst = voxelInstances[i];
+            if (inst.matricesDirty) continue;
+            if (inst.modelIndex < 0 || inst.modelIndex >= (int)voxelObjects.size()) continue;
+
+            float tEntry, tExit;
+            if (!RayAABB(ray.O, ray.rD, inst.worldAABBmin, inst.worldAABBmax, tEntry, tExit))
+                continue;
+            if (tEntry >= ray.t) continue;
+
+            const float3 localO = inst.worldToLocal.TransformPoint(ray.O);
+            const float3 localD = inst.worldToLocal.TransformVector(ray.D);
+
+            if (TraceObjectDDA_Occlusion(localO, localD, voxelObjects[inst.modelIndex], ray.t))
+                return true;
+        }
     }
     return false;
 }

@@ -377,10 +377,10 @@ namespace GameScenes
 
 	inline void RegisterAllScenes(SceneManager& mgr)
 	{
+		mgr.AddScene(CubeShowcase());
 		mgr.AddScene(GyroscopeShowcase());
 		mgr.AddScene(InfinityMirrorShowcase());
 		mgr.AddScene(LivingCubeShowcase());
-		mgr.AddScene(CubeShowcase());
 		mgr.AddScene(MengerShowcase());
 		mgr.AddScene(ThousandSpheres());
 	}

@@ -117,15 +117,17 @@ namespace Tmpl8
 		bool useSplineCamera = false;
 		PhysicsWorld physics;
 		SceneManager sceneManager;
+		int lastLoadedSceneID = -1;  // detect scene changes in Tick
 
-		float3* bloomDown = nullptr;
-		float3* bloomTemp = nullptr;
+		// ── Bloom post-process (quarter-resolution for performance) ──
+		float3* bloomDown = nullptr;    // quarter-res downsample + threshold
+		float3* bloomTemp = nullptr;    // quarter-res blur scratch buffer
 		static constexpr int BLOOM_W = SCRWIDTH / 4;
 		static constexpr int BLOOM_H = SCRHEIGHT / 4;
 		bool   enableBloom = true;
-		float  bloomThreshold = 1.0f;
-		float  bloomIntensity = 0.35f;
-		int    bloomRadius = 6; 
-		void   ApplyBloom();
+		float  bloomThreshold = 1.0f;   // HDR luminance above which pixels bleed
+		float  bloomIntensity = 0.35f;  // strength of bloom added back to image
+		int    bloomRadius = 6;      // box-blur kernel radius at quarter-res
+		void   ApplyBloom();              // called after tile loop, before swap
 	};
 } // namespace Tmpl8
