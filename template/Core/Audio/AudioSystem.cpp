@@ -18,7 +18,7 @@ extern "C" {
 
 // Disable backends you don't have / don't need
 #define MA_NO_JACK
-#define MA_NO_RUNTIME_LINKING
+//#define MA_NO_RUNTIME_LINKING
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
@@ -39,6 +39,7 @@ bool AudioSystem::Init()
         std::cout << "Failed to init audio engine\n";
         return false;
     }
+
 
     return true;
 }

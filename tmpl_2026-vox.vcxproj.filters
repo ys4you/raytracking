@@ -52,6 +52,7 @@
     <ClCompile Include="PhysicsBall.cpp" />
     <ClCompile Include="SceneManager.cpp" />
     <ClCompile Include="template\Core\Audio\AudioSystem.cpp" />
+    <ClCompile Include="EventSystem.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="renderer.h" />
@@ -129,6 +130,9 @@
     <ClInclude Include="LivingCubeScene.h" />
     <ClInclude Include="InfinityMirrorScene.h" />
     <ClInclude Include="GyroscopeScene.h" />
+    <ClInclude Include="EventSystem.h" />
+    <ClInclude Include="BrickmapScene.h" />
+    <ClInclude Include="PulseGridScene.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="template">

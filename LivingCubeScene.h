@@ -320,7 +320,7 @@ namespace GameScenes
 		// Colored cubes created programmatically in first tick
 
 		// ── Camera ────────────────────────────────────────────────
-		s.camPos = float3(0.5f, 0.46f, 0.25f);
+		s.camPos = float3(0.5f, 0.47f, -0.28f);
 		s.camTarget = float3(0.5f, 0.45f, 0.5f);
 
 		// ── Sky ───────────────────────────────────────────────────

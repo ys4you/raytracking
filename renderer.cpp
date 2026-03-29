@@ -6,6 +6,8 @@
 #include "Core/Lighting/AreaLight.h"
 #include <immintrin.h>
 
+#include "Core/Audio/AudioSystem.h"
+
 
 float3 Renderer::Trace(Ray& ray, int depth, int, int)
 {
@@ -32,7 +34,6 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
     const Material& mat = *matPtr;
 
     // ── Fast sphere shading (LOD optimisation) ────────────────
-    // Skip for emissive spheres — they must return emission * emissionStr
     if (fastSphereShading && ray.sphereIndex >= 0 &&
         static_cast<int>(scene.spheres.size()) >= fastSphereThreshold &&
         mat.type != MaterialType::Emissive)
@@ -47,11 +48,9 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
         const float  invLen = _mm_cvtss_f32(_mm_rsqrt_ss(_mm_set_ss(dot(diff, diff))));
         const float3 N = diff * invLen;
 
-        // Base directional fill light (white)
         const float  ndotl = max(0.0f, dot(N, fastSphereLightDir));
         float3 color = mat.albedo * (fastSphereAmbient + (1.0f - fastSphereAmbient) * ndotl);
 
-        // Cheap point light contributions (no shadow rays)
         for (const PointLight& pl : lights.points)
         {
             if (!pl.enabled) continue;
@@ -60,7 +59,6 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
             const float  invDist = _mm_cvtss_f32(_mm_rsqrt_ss(_mm_set_ss(dist2)));
             const float3 L = toLight * invDist;
             const float  nl = max(0.0f, dot(N, L));
-            // Inverse-square falloff
             color += mat.albedo * pl.color * nl * (invDist * invDist);
         }
 
@@ -141,13 +139,10 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
 
 
 // -----------------------------------------------------------
-// Bloom post-process — quarter-resolution separable box blur
-// Extracts bright HDR pixels, blurs at 1/4 res, bilinear
-// upsamples and adds back with Reinhard tonemapping.
+// Bloom post-process
 // -----------------------------------------------------------
 void Renderer::ApplyBloom()
 {
-    // ── Step 1: Downsample + threshold ────────────────────────
 #pragma omp parallel for schedule(static)
     for (int by = 0; by < BLOOM_H; by++)
         for (int bx = 0; bx < BLOOM_W; bx++)
@@ -162,19 +157,16 @@ void Renderer::ApplyBloom()
                 }
             float3 avg = sum * (1.0f / 16.0f);
             float lum = avg.x * 0.299f + avg.y * 0.587f + avg.z * 0.114f;
-            // Soft-knee extraction: preserve colour ratios
             bloomDown[bx + by * BLOOM_W] = (lum > bloomThreshold)
                 ? avg * ((lum - bloomThreshold) / lum)
                 : float3(0, 0, 0);
         }
 
-    // ── Step 2: Two passes of separable box blur ──────────────
     for (int pass = 0; pass < 2; pass++)
     {
         const int R = bloomRadius * (pass + 1);
         const float invK = 1.0f / (float)(2 * R + 1);
 
-        // Horizontal
 #pragma omp parallel for schedule(static)
         for (int by = 0; by < BLOOM_H; by++)
             for (int bx = 0; bx < BLOOM_W; bx++)
@@ -190,7 +182,6 @@ void Renderer::ApplyBloom()
                 bloomTemp[bx + by * BLOOM_W] = s * invK;
             }
 
-        // Vertical
 #pragma omp parallel for schedule(static)
         for (int by = 0; by < BLOOM_H; by++)
             for (int bx = 0; bx < BLOOM_W; bx++)
@@ -207,12 +198,10 @@ void Renderer::ApplyBloom()
             }
     }
 
-    // ── Step 3: Bilinear upsample bloom + tonemap to screen ──
 #pragma omp parallel for schedule(static)
     for (int y = 0; y < SCRHEIGHT; y++)
         for (int x = 0; x < SCRWIDTH; x++)
         {
-            // Bilinear sample from quarter-res bloom
             float bx = ((float)x + 0.5f) * 0.25f - 0.5f;
             float by = ((float)y + 0.5f) * 0.25f - 0.5f;
             int x0 = (int)floorf(bx), y0 = (int)floorf(by);
@@ -231,7 +220,6 @@ void Renderer::ApplyBloom()
             float3 bot = b01 * (1.0f - fx) + b11 * fx;
             float3 bloom = top * (1.0f - fy) + bot * fy;
 
-            // Add bloom to HDR accumulator, then Reinhard tonemap
             const int idx = x + y * SCRWIDTH;
             float3 hdr = accumulator[idx] + bloom * bloomIntensity;
             float3 mapped;
@@ -275,7 +263,6 @@ void Renderer::Init()
     rayDirTable = new float3[SCRWIDTH * SCRHEIGHT];
     rayTableDirty = true;
 
-    // ── Bloom buffers (quarter resolution) ────────────────────
     bloomDown = new float3[BLOOM_W * BLOOM_H];
     bloomTemp = new float3[BLOOM_W * BLOOM_H];
 
@@ -306,7 +293,6 @@ void Renderer::Init()
     sceneManager.LoadScene(0, scene, camera, sky, lights);
     lastLoadedSceneID = sceneManager.CurrentID();
 
-    // Rebuild spline from scene 0 if it has one
     if (sceneManager.HasActive() && !sceneManager.Active().splinePoints.empty())
     {
         cameraSpline = CatmullRomSpline();
@@ -322,6 +308,123 @@ void Renderer::Init()
     {
         useSplineCamera = false;
     }
+
+    // ── Event system setup ────────────────────────────────────
+    eventSystem.Load("events.bin");
+
+    // Register known event types for brickmap
+    eventSystem.knownTypes.push_back("brickmap_speed");
+    eventSystem.knownTypes.push_back("brickmap_reset");
+
+    // Fade in: screen goes from fade color to visible
+    eventSystem.RegisterHandler("fade_in", [this](const TimeEvent& e) {
+        float duration = e.param1 > 0.0f ? e.param1 : 1.0f;
+        fadeOpacity = 1.0f;
+        fadeTarget = 0.0f;
+        fadeSpeed = 1.0f / duration;
+        fadeColor = float3(e.param2, e.param3, 0);
+        if (fadeColor.x == 0 && fadeColor.y == 0)
+            fadeColor = float3(0, 0, 0);
+        });
+
+    // Fade out: screen goes from visible to fade color
+    eventSystem.RegisterHandler("fade_out", [this](const TimeEvent& e) {
+        float duration = e.param1 > 0.0f ? e.param1 : 1.0f;
+        fadeTarget = 1.0f;
+        fadeSpeed = 1.0f / duration;
+        fadeColor = float3(e.param2, e.param3, 0);
+        if (fadeColor.x == 0 && fadeColor.y == 0)
+            fadeColor = float3(0, 0, 0);
+        });
+
+    // Scene change
+    eventSystem.RegisterHandler("scene_change", [this](const TimeEvent& e) {
+        int idx = (int)e.param1;
+        if (idx >= 0 && idx < sceneManager.SceneCount())
+        {
+            sceneManager.LoadScene(idx, scene, camera, sky, lights);
+            ResetAccumulator();
+            rayTableDirty = true;
+            lightColorsStored = false;
+        }
+        });
+
+    // Camera cut (same as scene_change)
+    eventSystem.RegisterHandler("camera_cut", [this](const TimeEvent& e) {
+        int idx = (int)e.param1;
+        if (idx >= 0 && idx < sceneManager.SceneCount())
+        {
+            sceneManager.LoadScene(idx, scene, camera, sky, lights);
+            ResetAccumulator();
+            rayTableDirty = true;
+            lightColorsStored = false;
+        }
+        });
+
+    // Flash: instant bloom spike
+    eventSystem.RegisterHandler("flash", [this](const TimeEvent& e) {
+        bloomIntensity = e.param1 > 0 ? e.param1 : 1.0f;
+        ResetAccumulator();
+        });
+
+    // Bloom pulse
+    eventSystem.RegisterHandler("bloom_pulse", [this](const TimeEvent& e) {
+        bloomIntensity = e.param1;
+        });
+
+    // Custom handler — strParam routes to sub-actions
+    eventSystem.RegisterHandler("custom", [this](const TimeEvent& e) {
+        if (e.strParam == "fade_in_lights")
+        {
+            lightFadeActive = true;
+            lightFadeTimer = 0.0f;
+            lightFadeDuration = e.param1 > 0 ? e.param1 : 2.0f;
+            lightFadeFrom = lightFadeMult;
+            lightFadeTo = e.param2 > 0 ? e.param2 : 1.0f;
+        }
+        else if (e.strParam == "fade_out_lights")
+        {
+            lightFadeActive = true;
+            lightFadeTimer = 0.0f;
+            lightFadeDuration = e.param1 > 0 ? e.param1 : 2.0f;
+            lightFadeFrom = lightFadeMult;
+            lightFadeTo = 0.0f;
+        }
+        else if (e.strParam == "bloom")
+        {
+            bloomIntensity = e.param1;
+            bloomThreshold = e.param2 > 0 ? e.param2 : bloomThreshold;
+        }
+        else if (e.strParam == "sun")
+        {
+            sky.sunIntensity = e.param1;
+            sky.skyCacheDirty = true;
+        }
+        else if (e.strParam == "speed")
+        {
+            cameraFollower.speed = e.param1;
+        }
+        else if (e.strParam == "timeofday")
+        {
+            sky.timeOfDay = e.param1;
+            sky.skyCacheDirty = true;
+        }
+        ResetAccumulator();
+        });
+
+    // ── Brickmap scene event hooks ────────────────────────────
+    eventSystem.RegisterHandler("brickmap_speed", [](const TimeEvent& e) {
+        auto& bm = GameScenes::GetBrickmapState();
+        if (bm) bm->speedMul = e.param1;
+        });
+    eventSystem.RegisterHandler("brickmap_reset", [](const TimeEvent& e) {
+        auto& bm = GameScenes::GetBrickmapState();
+        if (bm) bm->Reset();
+        });
+
+    // ── Start music ───────────────────────────────────────────
+    AudioSystem::Get().Play("assets/Audio/Music/ambient.mp3", true);
+    eventSystem.SetTrack(AudioSystem::Get().GetSound("assets/Audio/Music/ambient.mp3"));
 }
 
 
@@ -332,7 +435,7 @@ void Renderer::Tick(float deltaTime)
 {
     const float3 orbitCenter = float3(0.5f, 0.5f, 0.5f);
 
-    // ── Detect scene change (handles Init, F-keys, UI buttons) ──
+    // ── Detect scene change ───────────────────────────────────
     if (sceneManager.HasActive() && sceneManager.CurrentID() != lastLoadedSceneID)
     {
         lastLoadedSceneID = sceneManager.CurrentID();
@@ -353,12 +456,13 @@ void Renderer::Tick(float deltaTime)
             useSplineCamera = false;
         }
         rayTableDirty = true;
+        lightColorsStored = false;
         ResetAccumulator();
     }
 
     auto startTime = std::chrono::high_resolution_clock::now();
     sampleCount++;
-    frameIndex++;  // Checkerboard half-alternation (credit: Niek)
+    frameIndex++;
     int totalRaysThisFrame = 0;
 
     sky.Update(deltaTime);
@@ -376,6 +480,36 @@ void Renderer::Tick(float deltaTime)
     {
         lights.directionals[0] = sky.sun;
         lights.directionals[1] = sky.moon;
+    }
+
+    // ── Store original light colors once after scene load ─────
+    if (!lightColorsStored && !lights.points.empty())
+    {
+        originalPointLightColors.clear();
+        for (const auto& pl : lights.points)
+            originalPointLightColors.push_back(pl.color);
+        lightColorsStored = true;
+    }
+
+    // ── Light fade update ─────────────────────────────────────
+    if (lightFadeActive)
+    {
+        lightFadeTimer += dt;
+        float t = clamp(lightFadeTimer / lightFadeDuration, 0.0f, 1.0f);
+        float smooth = t * t * (3.0f - 2.0f * t);
+        lightFadeMult = lightFadeFrom + (lightFadeTo - lightFadeFrom) * smooth;
+
+        if (t >= 1.0f)
+            lightFadeActive = false;
+
+        ResetAccumulator();
+    }
+
+    // ── Apply light fade multiplier ───────────────────────────
+    if (lightColorsStored)
+    {
+        for (int i = 0; i < (int)lights.points.size() && i < (int)originalPointLightColors.size(); i++)
+            lights.points[i].color = originalPointLightColors[i] * lightFadeMult;
     }
 
     const bool cameraMoving =
@@ -408,6 +542,27 @@ void Renderer::Tick(float deltaTime)
         ResetAccumulator();
     }
 
+    // ── Event system tick ─────────────────────────────────────
+    eventSystem.Tick(deltaTime);
+
+    // Brickmap bloom spike — adds on top of base bloom
+    {
+        auto& bm = GameScenes::GetBrickmapState();
+        if (bm && bm->bloomSpike > 0.01f)
+        {
+            bloomIntensity = 0.3f + bm->bloomSpike;  // base + spike
+            ResetAccumulator();
+        }
+        else
+        {
+            bloomIntensity = 0.3f;  // restore base
+        }
+    }
+
+    auto& bm = GameScenes::GetBrickmapState();
+    if (bm && useSplineCamera)
+        cameraFollower.speed = bm->camSpeedRequest;
+
     // ── Per-frame scene logic ─────────────────────────────────
     if (sceneManager.HasActive() && sceneManager.Active().tickCallback)
     {
@@ -417,13 +572,12 @@ void Renderer::Tick(float deltaTime)
         );
     }
 
+    // ── Tile-based rendering ──────────────────────────────────
     constexpr int TILE = 16;
     const int tilesX = (SCRWIDTH + TILE - 1) / TILE;
     const int tilesY = (SCRHEIGHT + TILE - 1) / TILE;
     const int totalTiles = tilesX * tilesY;
 
-    // ── Tile loop — writes HDR to accumulator only ────────────
-    // Tonemapping is deferred to the bloom pass (or fallback).
 #pragma omp parallel for schedule(dynamic, 1) reduction(+:totalRaysThisFrame)
     for (int tileIdx = 0; tileIdx < totalTiles; ++tileIdx)
     {
@@ -439,18 +593,15 @@ void Renderer::Tick(float deltaTime)
             {
                 const int idx = x + y * SCRWIDTH;
 
-                // ── Checkerboard rendering (credit: Niek) ─────────
                 const bool traceThisPixel = (sampleCount <= 1) ||
                     (((x + y) & 1) == (static_cast<int>(frameIndex) & 1));
 
                 if (!traceThisPixel)
                 {
-                    // Reuse previous frame's HDR result
                     accumulator[idx] = history[idx];
                     continue;
                 }
 
-                // ── Traced pixel path ─────────────────────────────
                 const float jx = BlueNoise(x, y, sampleCount);
                 const float jy = BlueNoise(y, x, sampleCount);
 
@@ -514,7 +665,6 @@ void Renderer::Tick(float deltaTime)
                     sampleCountPerPixel[idx] = 1;
                 }
 
-                // HDR only — tonemapping deferred to bloom/fallback pass
                 accumulator[idx] = blended;
             }
     }
@@ -522,11 +672,10 @@ void Renderer::Tick(float deltaTime)
     // ── Post-process: bloom + tonemap ─────────────────────────
     if (enableBloom)
     {
-        ApplyBloom();  // reads accumulator → bloom → tonemap → screen
+        ApplyBloom();
     }
     else
     {
-        // Fallback: plain Reinhard tonemap, no bloom
 #pragma omp parallel for schedule(static)
         for (int i = 0; i < SCRWIDTH * SCRHEIGHT; i++)
         {
@@ -536,6 +685,36 @@ void Renderer::Tick(float deltaTime)
             mapped.y = c.y / (1.0f + c.y);
             mapped.z = c.z / (1.0f + c.z);
             screen->pixels[i] = RGBF32_to_RGB8(mapped);
+        }
+    }
+
+    // ── Screen fade overlay ───────────────────────────────────
+    {
+        if (fadeOpacity < fadeTarget)
+            fadeOpacity = min(fadeOpacity + fadeSpeed * dt, fadeTarget);
+        else if (fadeOpacity > fadeTarget)
+            fadeOpacity = max(fadeOpacity - fadeSpeed * dt, fadeTarget);
+
+        if (fadeOpacity > 0.001f)
+        {
+            uint fadeR = (uint)(fadeColor.x * 255.0f);
+            uint fadeG = (uint)(fadeColor.y * 255.0f);
+            uint fadeB = (uint)(fadeColor.z * 255.0f);
+
+#pragma omp parallel for schedule(static)
+            for (int i = 0; i < SCRWIDTH * SCRHEIGHT; i++)
+            {
+                uint pixel = screen->pixels[i];
+                uint r = (pixel >> 16) & 255;
+                uint g = (pixel >> 8) & 255;
+                uint b = pixel & 255;
+
+                r = (uint)(r * (1.0f - fadeOpacity) + fadeR * fadeOpacity);
+                g = (uint)(g * (1.0f - fadeOpacity) + fadeG * fadeOpacity);
+                b = (uint)(b * (1.0f - fadeOpacity) + fadeB * fadeOpacity);
+
+                screen->pixels[i] = (r << 16) | (g << 8) | b;
+            }
         }
     }
 
@@ -572,8 +751,8 @@ void Renderer::UIStats()
             static_cast<float>(mousePos.y)).voxel);
     ImGui::Text("%.2f ms | %.1f FPS", avgFrameTimeMs, fps);
     ImGui::Text("%.1f Mrays/s", rps);
-
     ImGui::Text("Ray table: %s", rayTableDirty ? "dirty" : "cached");
+    ImGui::Text("Light mult: %.2f", lightFadeMult);
 
     static float fpsHistory[120] = {};
     static int   offset = 0;
@@ -615,10 +794,11 @@ void Renderer::UI()
     ImGui::Begin("Inspector");
 
     sceneManager.UI(scene, camera, sky, lights, [this]() { ResetAccumulator(); });
+    eventSystem.UI([this]() { ResetAccumulator(); });
 
     UIStats();
 
-    // ── Debug / Camera ────────────────────────────────────────────────
+    // ── Debug / Camera ────────────────────────────────────────
     if (ImGui::CollapsingHeader("Camera & Debug"))
     {
         if (ImGui::Checkbox("Show Normals", &debugNormals))
@@ -664,7 +844,7 @@ void Renderer::UI()
         }
     }
 
-    // ── Post-Processing ──────────────────────────────────────────────
+    // ── Post-Processing ──────────────────────────────────────
     if (ImGui::CollapsingHeader("Post-Processing"))
     {
         bool ppChanged = false;
@@ -675,10 +855,16 @@ void Renderer::UI()
             ppChanged |= ImGui::SliderFloat("Bloom Intensity", &bloomIntensity, 0.0f, 1.0f, "%.2f");
             ppChanged |= ImGui::SliderInt("Bloom Radius", &bloomRadius, 2, 16);
         }
+
+        ImGui::Spacing();
+        ImGui::Text("Screen Fade: %.0f%%", fadeOpacity * 100.0f);
+        ImGui::SliderFloat("Fade Opacity", &fadeOpacity, 0.0f, 1.0f);
+        ImGui::SliderFloat("Light Mult", &lightFadeMult, 0.0f, 1.0f);
+
         if (ppChanged) ResetAccumulator();
     }
 
-    // ── Sky ──────────────────────────────────────────────────────────
+    // ── Sky ──────────────────────────────────────────────────
     if (ImGui::CollapsingHeader("Sky"))
     {
         bool skyChanged = false;
@@ -710,7 +896,7 @@ void Renderer::UI()
         if (skyChanged) ResetAccumulator();
     }
 
-    // ── Lights ──────────────────────────────────────────────────────
+    // ── Lights ──────────────────────────────────────────────
     if (ImGui::CollapsingHeader("Lights"))
     {
         bool lightsChanged = false;
@@ -819,7 +1005,7 @@ void Renderer::UI()
         if (lightsChanged) ResetAccumulator();
     }
 
-    // ── Materials ────────────────────────────────────────────────────
+    // ── Materials ────────────────────────────────────────────
     if (ImGui::CollapsingHeader("Materials"))
     {
         bool materialsChanged = false;
@@ -898,12 +1084,20 @@ bool Renderer::MaterialUI(const char* label, Material& material)
 
 
 // -----------------------------------------------------------
+void Renderer::Shutdown()
+{
+    eventSystem.Save("events.bin");
+}
+
+
+// -----------------------------------------------------------
 void Tmpl8::Renderer::InitAccumulator()
 {
     if (!accumulator)
         accumulator = static_cast<float3*>MALLOC64(SCRWIDTH * SCRHEIGHT * sizeof(float3));
     ResetAccumulator();
 }
+
 
 // -----------------------------------------------------------
 void Tmpl8::Renderer::ResetAccumulator()
@@ -912,6 +1106,7 @@ void Tmpl8::Renderer::ResetAccumulator()
     memset(sampleCountPerPixel, 0, SCRWIDTH * SCRHEIGHT * sizeof(int));
     sampleCount = 0;
 }
+
 
 // -----------------------------------------------------------
 void Renderer::MouseDown(int button)
@@ -937,8 +1132,9 @@ void Renderer::MouseDown(int button)
     }
 }
 
+
 void Renderer::KeyDown(int key)
 {
-    if (key == GLFW_KEY_F1) { sceneManager.LoadScene(0, scene, camera, sky, lights); ResetAccumulator(); rayTableDirty = true; }
-    if (key == GLFW_KEY_F2) { sceneManager.LoadScene(1, scene, camera, sky, lights); ResetAccumulator(); rayTableDirty = true; }
+    if (key == GLFW_KEY_F1) { sceneManager.LoadScene(0, scene, camera, sky, lights); ResetAccumulator(); rayTableDirty = true; lightColorsStored = false; }
+    if (key == GLFW_KEY_F2) { sceneManager.LoadScene(1, scene, camera, sky, lights); ResetAccumulator(); rayTableDirty = true; lightColorsStored = false; }
 }

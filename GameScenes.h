@@ -3,10 +3,13 @@
 // GameScenes.h — Define your scenes here
 // ============================================================
 #include "SceneManager.h"
+
+
 #include "LivingCubeScene.h"
 #include "InfinityMirrorScene.h"
 #include "GyroscopeScene.h"
-
+#include "BrickmapScene.h"
+#include "PulseGridScene.h"
 
 namespace GameScenes
 {
@@ -378,10 +381,15 @@ namespace GameScenes
 	inline void RegisterAllScenes(SceneManager& mgr)
 	{
 		mgr.AddScene(CubeShowcase());
-		mgr.AddScene(GyroscopeShowcase());
-		mgr.AddScene(InfinityMirrorShowcase());
-		mgr.AddScene(LivingCubeShowcase());
 		mgr.AddScene(MengerShowcase());
+
+		mgr.AddScene(LivingCubeShowcase());
+		mgr.AddScene(PulseGridShowcase());
+
+		mgr.AddScene(BrickmapShowcase());
+		mgr.AddScene(InfinityMirrorShowcase());
+
+		mgr.AddScene(GyroscopeShowcase());
 		mgr.AddScene(ThousandSpheres());
 	}
 

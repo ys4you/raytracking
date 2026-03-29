@@ -10,6 +10,13 @@ public:
     bool Init();
     void Shutdown();
     void Play(const std::string& file, bool loop = false);
+
+    ma_sound* GetSound(const std::string& file)
+	{
+        auto it = sounds.find(file);
+        return (it != sounds.end()) ? it->second : nullptr;
+    }
+
     void StopAll();
     void SetMasterVolume(float volume);
 private:

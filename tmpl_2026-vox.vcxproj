@@ -122,6 +122,7 @@
   </ItemDefinitionGroup>
   <!-- END Custom section -->
   <ItemGroup>
+    <ClCompile Include="EventSystem.cpp" />
     <ClCompile Include="lib\tiny_bvh.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
     </ClCompile>
@@ -157,6 +158,9 @@
     <ClCompile Include="VoxelFactory.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="PulseGridScene.h" />
+    <ClInclude Include="BrickmapScene.h" />
+    <ClInclude Include="EventSystem.h" />
     <ClInclude Include="GameScenes.h" />
     <ClInclude Include="GyroscopeScene.h" />
     <ClInclude Include="HDRCubemap.h" />

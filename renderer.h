@@ -8,7 +8,10 @@
 #include "PhysicsWorld.h"
 #include "SceneManager.h"
 #include "GameScenes.h"
+#include "EventSystem.h"
+
 class material;
+
 struct SceneLights
 {
 	std::vector<PointLight> points;
@@ -16,6 +19,7 @@ struct SceneLights
 	std::vector<SpotLight> spots;
 	std::vector<AreaLight> areas;
 };
+
 namespace Tmpl8
 {
 	class Renderer : public TheApp
@@ -56,11 +60,13 @@ namespace Tmpl8
 			int iy = (y + frame * 31) & (BN_SIZE - 1);
 			return blueNoise[ix + iy * BN_SIZE] * (1.0f / 255.0f);
 		}
+
 		bool rebuildSphereBVH = false;
 		float lastFrameTime = 0.0f;
 		float avgFrameTimeMs = 0.0f;
 		float fps = 0.0f;
 		float rps = 0.0f;
+
 		void Init();
 		float3 Trace(Ray& ray, int = 0, int = 0, int = 0);
 		void Tick(float deltaTime);
@@ -68,7 +74,7 @@ namespace Tmpl8
 		void UI();
 		void LightUI() const;
 		static bool MaterialUI(const char* label, Material& material);
-		void Shutdown() { /* nothing here for now */ }
+		void Shutdown();
 		void MouseUp(int button) { button = 0; }
 		void MouseDown(int button);
 		void MouseMove(int x, int y)
@@ -82,6 +88,7 @@ namespace Tmpl8
 		void MouseWheel(float y) { y = 0; }
 		void KeyUp(int key) { key = 0; }
 		void KeyDown(int key);
+
 		int2 mousePos;
 		float3* accumulator = nullptr;
 		float3* history = nullptr;
@@ -91,43 +98,66 @@ namespace Tmpl8
 		Frustum previousFrustum;
 		int* sampleCountPerPixel = nullptr;
 		SceneLights lights;
+
 		bool debugNormals = false;
 		bool fastSphereShading = true;
 		int fastSphereThreshold = 1000;
-		// Precomputed once — avoids normalize() sqrtf on every sphere pixel hit.
 		float3 fastSphereLightDir = normalize(float3(0.5f, 0.8f, 0.3f));
 		static constexpr float fastSphereAmbient = 0.12f;
-		// Ray direction table — cached primary ray directions for stationary camera.
+
 		float3* rayDirTable = nullptr;
 		bool    rayTableDirty = true;
 		uint32_t sampleCount = 0;
-		// Checkerboard rendering — alternate which half of pixels is traced (credit: Niek)
 		uint32_t frameIndex = 0;
 		mat4 lastViewMatrix;
+
 		void InitAccumulator();
 		void ResetAccumulator();
+
 		int selectedMaterialIndex = -1;
 		bool selectionLocked = false;
 		bool editingMaterial = false;
+
 		static constexpr int BN_SIZE = 256;
 		uint8_t* blueNoise = nullptr;
+
 		Sky sky;
 		CatmullRomSpline cameraSpline;
 		SplineFollower cameraFollower;
 		bool useSplineCamera = false;
+
 		PhysicsWorld physics;
 		SceneManager sceneManager;
-		int lastLoadedSceneID = -1;  // detect scene changes in Tick
+		int lastLoadedSceneID = -1;
 
-		// ── Bloom post-process (quarter-resolution for performance) ──
-		float3* bloomDown = nullptr;    // quarter-res downsample + threshold
-		float3* bloomTemp = nullptr;    // quarter-res blur scratch buffer
+		EventSystem eventSystem;
+
+		// ── Bloom post-process (quarter-resolution) ──────────────
+		float3* bloomDown = nullptr;
+		float3* bloomTemp = nullptr;
 		static constexpr int BLOOM_W = SCRWIDTH / 4;
 		static constexpr int BLOOM_H = SCRHEIGHT / 4;
 		bool   enableBloom = true;
-		float  bloomThreshold = 1.0f;   // HDR luminance above which pixels bleed
-		float  bloomIntensity = 0.35f;  // strength of bloom added back to image
-		int    bloomRadius = 6;      // box-blur kernel radius at quarter-res
-		void   ApplyBloom();              // called after tile loop, before swap
+		float  bloomThreshold = 1.0f;
+		float  bloomIntensity = 0.35f;
+		int    bloomRadius = 6;
+		void   ApplyBloom();
+
+		// ── Screen fade ──────────────────────────────────────────
+		float  fadeOpacity = 1.0f;    // 0 = visible, 1 = fully faded
+		float  fadeTarget = 0.0f;     // target opacity
+		float  fadeSpeed = 1.0f;      // 1/duration
+		float3 fadeColor = float3(0, 0, 0);
+
+		// ── Light fade ───────────────────────────────────────────
+		bool  lightFadeActive = false;
+		float lightFadeTimer = 0.0f;
+		float lightFadeDuration = 2.0f;
+		float lightFadeFrom = 0.0f;
+		float lightFadeTo = 1.0f;
+		float lightFadeMult = 1.0f;   // starts dark aat .0f
+
+		std::vector<float3> originalPointLightColors;
+		bool lightColorsStored = false;
 	};
 } // namespace Tmpl8

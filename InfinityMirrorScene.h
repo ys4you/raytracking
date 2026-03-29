@@ -261,7 +261,7 @@ namespace GameScenes
 					if (resetAcc) resetAcc();
 				}
 			};
-
+			
 		s.uiCallback = [rot](SceneDef& def, Tmpl8::Scene& scene,
 			std::function<void()> resetAcc)
 			{
