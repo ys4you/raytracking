@@ -10,6 +10,7 @@
 #include "GyroscopeScene.h"
 #include "BrickmapScene.h"
 #include "PulseGridScene.h"
+#include "OrbitCloudScene.h"
 
 namespace GameScenes
 {
@@ -330,42 +331,64 @@ namespace GameScenes
 
 
 	// ============================================================
-	// Spheres — sphere stress test
+	// Physics Demo — balls rolling on voxel terrain
 	// ============================================================
-
-	inline SceneDef ThousandSpheres()
+	inline SceneDef PhysicsDemo()
 	{
 		SceneDef s;
-		s.name = "Spheres";
+		s.name = "Physics";
+		s.useVoxelGrid = true;
+		s.usePhysics = true;
 
-		s.camPos = float3(0.5f, 0.5f, -0.5f);
-		s.camTarget = float3(0.5f, 0.3f, 0.5f);
+		s.camPos = float3(0.5f, 0.65f, -0.2f);
+		s.camTarget = float3(0.5f, 0.25f, 0.5f);
 
 		s.sky.sunDir = normalize(float3(0.4f, -0.7f, 0.3f));
 		s.sky.sunColor = float3(1.0f, 0.95f, 0.8f);
 		s.sky.sunIntensity = 2.5f;
 		s.sky.timeOfDay = 0.25f;
 
-		for (int i = 0; i < 1000; i++)
+		s.gridBuilder = [](Tmpl8::Scene& scene)
+			{
+				for (int x = 0; x < 512; x++)
+					for (int z = 0; z < 512; z++)
+						scene.SetVoxel(x, 64, z, 200); 
+			};
+		
+		// Spawn balls at the top of the ramp
+		const int NUM_BALLS = 12;
+		for (int i = 0; i < NUM_BALLS; i++)
 		{
-			uint mat = MAT_RANDOM_START +
-				static_cast<uint>(RandomFloat() * (MAT_RANDOM_END - MAT_RANDOM_START));
+			float xOff = (i % 4) * 0.04f - 0.06f;
+			float zOff = (i / 4) * 0.04f;
+
+			uint mat = (i % 3 == 0) ? MAT_MIRROR
+				: (i % 3 == 1) ? MAT_DIELECTRIC
+				: MAT_GREEN;
+
 			s.spheres.push_back({
-				float3(0.1f + RandomFloat() * 0.8f,
-					   0.1f + RandomFloat() * 0.8f,
-					   0.1f + RandomFloat() * 0.8f),
-				0.01f,
+				float3(0.5f + xOff, 0.45f + 0.02f * i, 0.45f + zOff),
+				0.015f,
 				mat
 				});
 		}
 
-		s.spawner.radius = 0.01f;
+		s.spawner.radius = 0.015f;
+		s.spawner.rangeMin = float3(0.35f, 0.50f, 0.40f);
+		s.spawner.rangeMax = float3(0.65f, 0.55f, 0.50f);
 
-		PointLight pl;
-		pl.position = float3(1, 1, 1);
-		pl.color = float3(1, 1, 1);
-		pl.enabled = false;
-		s.pointLights.push_back(pl);
+		// Lights
+		PointLight overhead;
+		overhead.position = float3(0.5f, 0.85f, 0.5f);
+		overhead.color = float3(1.5f, 1.45f, 1.4f);
+		overhead.enabled = true;
+		s.pointLights.push_back(overhead);
+
+		PointLight front;
+		front.position = float3(0.5f, 0.4f, 0.1f);
+		front.color = float3(0.6f, 0.58f, 0.55f);
+		front.enabled = true;
+		s.pointLights.push_back(front);
 
 		s.uiCallback = [](SceneDef& def, Tmpl8::Scene& scene, std::function<void()> resetAcc)
 			{
@@ -374,23 +397,28 @@ namespace GameScenes
 
 		return s;
 	}
+
 	// ============================================================
 	// Register all scenes
 	// ============================================================
 
 	inline void RegisterAllScenes(SceneManager& mgr)
 	{
+		mgr.AddScene(PhysicsDemo());
+
 		mgr.AddScene(CubeShowcase());
 		mgr.AddScene(MengerShowcase());
 
 		mgr.AddScene(LivingCubeShowcase());
 		mgr.AddScene(PulseGridShowcase());
+		mgr.AddScene(OrbitCloudShowcase());
+
 
 		mgr.AddScene(BrickmapShowcase());
 		mgr.AddScene(InfinityMirrorShowcase());
 
+		//gyroscope
 		mgr.AddScene(GyroscopeShowcase());
-		mgr.AddScene(ThousandSpheres());
 	}
 
 } // namespace GameScenes

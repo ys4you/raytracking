@@ -1,10 +1,6 @@
 ﻿#pragma once
 #include "stb_image.h"
 
-// ---------------------------------------------------------------------------
-// HDRCubemap  — equirectangular HDR environment map
-// ---------------------------------------------------------------------------
-
 struct HDRCubemap
 {
     int    width = 0;
@@ -29,11 +25,6 @@ struct HDRCubemap
         return maxVal;
     }
 
-    // -----------------------------------------------------------------------
-    // Load
-    //   Forces 4 channels so stride = width * 4 floats (16 bytes / pixel).
-    //   Every pixel therefore starts at a multiple of 16 — aligned for SIMD.
-    // -----------------------------------------------------------------------
     bool Load(const char* path)
     {
         stbi_set_flip_vertically_on_load(true);
@@ -44,11 +35,6 @@ struct HDRCubemap
         return data != nullptr;
     }
 
-    // -----------------------------------------------------------------------
-    // Sample  — bilinear lookup
-    //   u ∈ [0,1] horizontal, v ∈ [0,1] vertical.
-    //   Wraps horizontally (panoramic seam), clamps vertically (poles).
-    // -----------------------------------------------------------------------
     float3 Sample(float u, float v) const
     {
         if (!data || width == 0 || height == 0)

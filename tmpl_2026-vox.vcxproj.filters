@@ -133,6 +133,7 @@
     <ClInclude Include="EventSystem.h" />
     <ClInclude Include="BrickmapScene.h" />
     <ClInclude Include="PulseGridScene.h" />
+    <ClInclude Include="OrbitCloudScene.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="template">
@@ -146,5 +147,10 @@
     <None Include="template\LICENSE">
       <Filter>template</Filter>
     </None>
+    <None Include="assets\menger.vox" />
+    <None Include="assets\order_sky.hdr" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="assets\BlueNoise256x256.png" />
   </ItemGroup>
 </Project>

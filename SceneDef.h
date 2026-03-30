@@ -51,6 +51,7 @@ class SceneDef
 public:
 	const char* name = "unnamed";
 	bool useVoxelGrid = true;
+	bool usePhysics = false;
 	float3 camPos = float3(0.5f, 0.5f, -0.5f);
 	float3 camTarget = float3(0.5f, 0.3f, 0.5f);
 	SkySettings sky;
@@ -71,4 +72,6 @@ public:
 	// Per-frame tick callback: (def, worldScene, deltaTimeMs, resetAccumulator)
 	std::function<void(SceneDef&, Tmpl8::Scene&, float, std::function<void()>)> tickCallback = nullptr;
 	std::function<void(Tmpl8::Scene&)> gridBuilder = nullptr;
+
 };
+

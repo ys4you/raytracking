@@ -157,6 +157,7 @@ void SceneManager::LoadScene(int id, Tmpl8::Scene& worldScene,
 			testRay.t, testRay.materialIndex, testRay.instanceIndex, testRay.axis);
 	}
 
+
 	// ---- 10. Done ----
 	currentID = id;
 	printf("[SceneManager] Loaded '%s' in %.1fms  %d voxObj, %d voxInst, %d sph, %d lights\n",

@@ -158,6 +158,7 @@
     <ClCompile Include="VoxelFactory.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="OrbitCloudScene.h" />
     <ClInclude Include="PulseGridScene.h" />
     <ClInclude Include="BrickmapScene.h" />
     <ClInclude Include="EventSystem.h" />
@@ -210,7 +211,12 @@
     <ClCompile Include="camera.cpp" />
     <ClCompile Include="ray.cpp" />
     <ClInclude Include="ray.h" />
+    <None Include="assets\menger.vox" />
+    <None Include="assets\order_sky.hdr" />
     <None Include="template\LICENSE" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="assets\BlueNoise256x256.png" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

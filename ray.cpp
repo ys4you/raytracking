@@ -47,6 +47,7 @@ float3 Ray::GetNormal(const Scene& scene) const
     (&n.x)[axis] = (&sign.x)[axis];
     return n;
 }
+
 float3 Ray::GetAlbedo(const Scene& scene) const
 {
     if (sphereIndex >= 0)
@@ -56,3 +57,4 @@ float3 Ray::GetAlbedo(const Scene& scene) const
     }
     return scene.GetMat(voxel).albedo;
 }
+

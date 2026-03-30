@@ -1,10 +1,9 @@
 ﻿#pragma once
-//when I init a Microfacet material, compute f0 like this:
-// mat.F0 = lerp(float3{0.04f, 0.04f, 0.04f}, mat.albedo, mat.metallic);
 
 enum class MaterialType : uint8_t { Lambertian = 0, Metal = 1, Dielectric = 2, Emissive = 3, Microfacet = 4 };
 
-struct Material {
+struct Material
+{
     MaterialType type = MaterialType::Lambertian;
     float3  albedo = { 0.8f, 0.8f, 0.8f };
     float roughness = 0.5f;    // fuzz for metals, surface roughness

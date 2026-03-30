@@ -202,6 +202,17 @@ namespace Tmpl8
         std::vector<VoxelObject>   voxelObjects;
         std::vector<VoxelInstance> voxelInstances;
 
+        // --- TLAS  voxel instances ---
+        tinybvh::BVH              instanceBVH;
+        bool                      instanceBVHReady = false;
+        std::vector<int>          instancePrimToSceneIndex;
+
+
+        /// @brief  Rebuild TLAS BVH over voxel instances.
+        ///         Call after RebuildDirtyInstances(), once per frame.
+        void BuildInstanceBVH();
+
+
     private:
         void TraceSphereGrid(Ray& ray, float& nearestT, int& nearestIdx) const;
         void TraceSphereBVH(tinybvh::Ray& ray) const;

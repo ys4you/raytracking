@@ -82,7 +82,7 @@ public:
 private:
 	ma_sound* trackedSound = nullptr;
 	float lastCursor = 0.0f;
-	float tolerance  = 0.05f;  // seconds — event fires if cursor is within this window
+	float tolerance  = 0.05f;
 	float cachedTrackLength = 120.0f;  // fallback 2 min
 
 	std::vector<TimeEvent> events;
@@ -94,5 +94,5 @@ private:
 	float zoomLevel     = 100.0f;  // pixels per second in timeline
 	float scrollOffset  = 0.0f;
 
-	bool enabled = true;
+	bool enabled = false;
 };

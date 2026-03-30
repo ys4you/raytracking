@@ -45,8 +45,10 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
             scene.sphereSOA.cz[ray.sphereIndex]
         );
         const float3 diff = hitPos - centre;
+
         const float  invLen = _mm_cvtss_f32(_mm_rsqrt_ss(_mm_set_ss(dot(diff, diff))));
-        const float3 N = diff * invLen;
+
+    	const float3 N = diff * invLen;
 
         const float  ndotl = max(0.0f, dot(N, fastSphereLightDir));
         float3 color = mat.albedo * (fastSphereAmbient + (1.0f - fastSphereAmbient) * ndotl);
@@ -141,7 +143,7 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
 // -----------------------------------------------------------
 // Bloom post-process
 // -----------------------------------------------------------
-void Renderer::ApplyBloom()
+void Renderer::ApplyBloom() const
 {
 #pragma omp parallel for schedule(static)
     for (int by = 0; by < BLOOM_H; by++)
@@ -268,10 +270,13 @@ void Renderer::Init()
 
     InitAccumulator();
 
-    for (int i = 0; i < static_cast<int>(scene.spheres.size()); i++)
+    if (sceneManager.HasActive() && sceneManager.Active().usePhysics)
     {
-        int b = physics.AddBall(scene.spheres[i].center, scene.spheres[i].radius);
-        physics.balls[b].visualIndex = i;
+        for (int i = 0; i < static_cast<int>(scene.spheres.size()); i++)
+        {
+            int b = physics.AddBall(scene.spheres[i].center, scene.spheres[i].radius);
+            physics.balls[b].visualIndex = i;
+        }
     }
 
     const float3 orbitCenter = float3(0.5f, 0.5f, 0.5f);
@@ -291,6 +296,21 @@ void Renderer::Init()
 
     GameScenes::RegisterAllScenes(sceneManager);
     sceneManager.LoadScene(0, scene, camera, sky, lights);
+
+    GameScenes::RegisterAllScenes(sceneManager);
+    sceneManager.LoadScene(0, scene, camera, sky, lights);
+    lastLoadedSceneID = sceneManager.CurrentID();
+
+    // Physics setup — now spheres actually exist
+    if (sceneManager.HasActive() && sceneManager.Active().usePhysics)
+    {
+        for (int i = 0; i < static_cast<int>(scene.spheres.size()); i++)
+        {
+            int b = physics.AddBall(scene.spheres[i].center, scene.spheres[i].radius);
+            physics.balls[b].visualIndex = i;
+        }
+    }
+
     lastLoadedSceneID = sceneManager.CurrentID();
 
     if (sceneManager.HasActive() && !sceneManager.Active().splinePoints.empty())
@@ -455,6 +475,22 @@ void Renderer::Tick(float deltaTime)
         {
             useSplineCamera = false;
         }
+
+        // Rebuild physics for new scene
+        physics.balls.clear();
+        physics.accumulator = 0.0;
+        if (sceneManager.Active().usePhysics)
+        {
+            for (int i = 0; i < static_cast<int>(scene.spheres.size()); i++)
+            {
+                int b = physics.AddBall(scene.spheres[i].center, scene.spheres[i].radius);
+                physics.balls[b].visualIndex = i;
+            }
+        }
+
+        rayTableDirty = true;
+        lightColorsStored = false;
+        ResetAccumulator();
         rayTableDirty = true;
         lightColorsStored = false;
         ResetAccumulator();
@@ -529,19 +565,21 @@ void Renderer::Tick(float deltaTime)
         rayTableDirty = false;
     }
 
-    physics.Update(dt, scene);
-
-    bool anyBallMoved = !physics.balls.empty();
-    for (auto& ball : physics.balls)
-        if (ball.visualIndex >= 0 && ball.visualIndex < static_cast<int>(scene.spheres.size()))
-            scene.spheres[ball.visualIndex].center = ball.position;
-
-    if (anyBallMoved)
+    if (sceneManager.HasActive() && sceneManager.Active().usePhysics)
     {
-        scene.BuildSphereBVH();
-        ResetAccumulator();
-    }
+        physics.Update(dt, scene);
 
+        bool anyBallMoved = !physics.balls.empty();
+        for (auto& ball : physics.balls)
+            if (ball.visualIndex >= 0 && ball.visualIndex < static_cast<int>(scene.spheres.size()))
+                scene.spheres[ball.visualIndex].center = ball.position;
+
+        if (anyBallMoved)
+        {
+            scene.BuildSphereBVH();
+            ResetAccumulator();
+        }
+    }
     // ── Event system tick ─────────────────────────────────────
     eventSystem.Tick(deltaTime);
 

@@ -25,10 +25,12 @@ namespace Tmpl8
 	class Renderer : public TheApp
 	{
 	public:
-		inline float length2(const float3& v) {
+		inline float length2(const float3& v)
+		{
 			return v.x * v.x + v.y * v.y + v.z * v.z;
 		}
-		inline float3 RandomInUnitSphere() {
+		inline float3 RandomInUnitSphere()
+		{
 			float3 p;
 			do { p = 2.0f * float3(RandomFloat(), RandomFloat(), RandomFloat()) - float3(1, 1, 1); } while (length2(p) >= 1.0f);
 			return p;
@@ -141,7 +143,7 @@ namespace Tmpl8
 		float  bloomThreshold = 1.0f;
 		float  bloomIntensity = 0.35f;
 		int    bloomRadius = 6;
-		void   ApplyBloom();
+		void   ApplyBloom() const;
 
 		// ── Screen fade ──────────────────────────────────────────
 		float  fadeOpacity = 1.0f;    // 0 = visible, 1 = fully faded
