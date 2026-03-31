@@ -25,18 +25,13 @@ void VoxelFactory::CreateInstance(
 {
     const VoxelObject& obj = scene.voxelObjects[objectIndex];
 
-    // Convert from grid space (0..WORLDSIZE) to world space (0..1)
     const float invWS = 1.0f / WORLDSIZE;
     float3 wsPos = position * invWS;
     float3 wsScale = scale * invWS;
 
-    // Pivot in LOCAL voxel units (pre-scale space).
-    // BuildMatrices applies T(-pivot) before S, so pivot must be
-    // in the same coordinate system as the voxel grid.
     float3 localPivot;
     if (pivot.x == 0 && pivot.y == 0 && pivot.z == 0)
     {
-        // Auto-centre: half the object size in voxel units
         localPivot = float3(
             (float)obj.sizeX * 0.5f,
             (float)obj.sizeY * 0.5f,
@@ -45,21 +40,17 @@ void VoxelFactory::CreateInstance(
     }
     else
     {
-        localPivot = pivot;  // caller provides in voxel units
+        localPivot = pivot;
     }
 
-    // Convert rotation from degrees to radians
     const float DEG2RAD = 3.14159265f / 180.0f;
     float3 rotRad = rotation * DEG2RAD;
-
-    // MagicaVoxel is Z-up, renderer is Y-up: prepend -90° X rotation
     rotRad.x -= 3.14159265f / 2.0f;
 
     VoxelInstance inst(objectIndex, wsPos, rotRad, wsScale, localPivot);
-    inst.BuildMatrices(obj.sizeX, obj.sizeY, obj.sizeZ);
+    // matricesDirty = true by default — RebuildDirtyInstances handles it
     scene.voxelInstances.push_back(inst);
 }
-
 void VoxelFactory::FromVoxTransform(const ogt_vox_transform& T,
     float3& outPos, float3& outRot, float3& outScale, float3 pivot)
 {

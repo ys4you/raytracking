@@ -326,6 +326,7 @@ namespace GameScenes
 		s.tickCallback = [pg](SceneDef&, Tmpl8::Scene& scene,
 			float dt, std::function<void()> reset)
 			{
+				scene.instancesShadows = false;
 				if (pg->needsInit)
 				{
 					pg->needsInit = false;

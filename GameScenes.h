@@ -404,7 +404,6 @@ namespace GameScenes
 
 	inline void RegisterAllScenes(SceneManager& mgr)
 	{
-		mgr.AddScene(PhysicsDemo());
 
 		mgr.AddScene(CubeShowcase());
 		mgr.AddScene(MengerShowcase());
@@ -419,6 +418,7 @@ namespace GameScenes
 
 		//gyroscope
 		mgr.AddScene(GyroscopeShowcase());
+		mgr.AddScene(PhysicsDemo());
 	}
 
 } // namespace GameScenes

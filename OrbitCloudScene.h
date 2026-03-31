@@ -336,7 +336,7 @@ namespace GameScenes
     inline SceneDef OrbitCloudShowcase()
     {
         SceneDef s;
-        s.name = "TLAS Orbit — Sterile Choreography";
+        s.name = "Orbit";
         s.useVoxelGrid = true;
 
         s.voxObjects.push_back({
@@ -384,6 +384,7 @@ namespace GameScenes
         s.tickCallback = [oc](SceneDef&, Tmpl8::Scene& scene,
             float dt, std::function<void()> reset)
             {
+                scene.instancesShadows = false;
                 if (oc->needsInit)
                 {
                     oc->needsInit = false;

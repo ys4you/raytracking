@@ -81,7 +81,7 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
     {
     case MaterialType::Lambertian:
     {
-        float3 color = 0;
+        float3 color = float3(0.08f); // ambient floor — prevents pure black faces
         for (const PointLight& l : lights.points)             if (l.enabled) color += IlluminatePoint(l, sp, scene);
         for (const DirectionalLight& l : lights.directionals) if (l.enabled) color += IlluminateDirectional(l, sp, scene);
         for (const SpotLight& l : lights.spots)               if (l.enabled) color += IlluminateSpot(l, sp, scene);
@@ -617,84 +617,73 @@ void Renderer::Tick(float deltaTime)
     const int totalTiles = tilesX * tilesY;
 
 #pragma omp parallel for schedule(dynamic, 1) reduction(+:totalRaysThisFrame)
-    for (int tileIdx = 0; tileIdx < totalTiles; ++tileIdx)
-    {
-        const int tileRow = tileIdx / tilesX;
-        const int tileCol = tileIdx % tilesX;
-        const int x0 = tileCol * TILE;
-        const int y0 = tileRow * TILE;
-        const int x1 = min(x0 + TILE, SCRWIDTH);
-        const int y1 = min(y0 + TILE, SCRHEIGHT);
-
-        for (int y = y0; y < y1; ++y)
-            for (int x = x0; x < x1; ++x)
+for (int tileIdx = 0; tileIdx < totalTiles; ++tileIdx)
+{
+    const int tileRow = tileIdx / tilesX;
+    const int tileCol = tileIdx % tilesX;
+    const int x0 = tileCol * TILE;
+    const int y0 = tileRow * TILE;
+    const int x1 = min(x0 + TILE, SCRWIDTH);
+    const int y1 = min(y0 + TILE, SCRHEIGHT);
+    for (int y = y0; y < y1; ++y)
+        for (int x = x0; x < x1; ++x)
+        {
+            const int idx = x + y * SCRWIDTH;
+            const bool traceThisPixel = (sampleCount <= 1) ||
+                (((x + y) & 1) == (static_cast<int>(frameIndex) & 1));
+            if (!traceThisPixel)
             {
-                const int idx = x + y * SCRWIDTH;
+                accumulator[idx] = history[idx];
+                continue;
+            }
+            const float jx = BlueNoise(x, y, sampleCount);
+            const float jy = BlueNoise(y, x, sampleCount);
+            Ray r = (cameraMoving || rayTableDirty)
+                ? camera.GetPrimaryRay(x + jx, y + jy)
+                : Ray(camera.camPos, rayDirTable[idx]);
+            const float3 sample = Trace(r, 0, 0, 0);
+            totalRaysThisFrame++;
+            float3 blended;
 
-                const bool traceThisPixel = (sampleCount <= 1) ||
-                    (((x + y) & 1) == (static_cast<int>(frameIndex) & 1));
-
-                if (!traceThisPixel)
+            // Instances move every frame — never reproject them
+            if (r.instanceIndex >= 0)
+            {
+                blended = sample;
+                sampleCountPerPixel[idx] = 1;
+            }
+            else if (!cameraMoving)
+            {
+                blended = sample;
+                if (r.voxel != 0)
+                    sampleCountPerPixel[idx] = 1;
+            }
+            else if (r.voxel > 0)
+            {
+                const float3 P = r.O + r.t * r.D;
+                float prev_x, prev_y;
+                if (prevCamera.WorldToScreen(P, prev_x, prev_y))
                 {
-                    accumulator[idx] = history[idx];
-                    continue;
-                }
-
-                const float jx = BlueNoise(x, y, sampleCount);
-                const float jy = BlueNoise(y, x, sampleCount);
-
-                Ray r = (cameraMoving || rayTableDirty)
-                    ? camera.GetPrimaryRay(x + jx, y + jy)
-                    : Ray(camera.camPos, rayDirTable[idx]);
-
-                const float3 sample = Trace(r, 0, 0, 0);
-                totalRaysThisFrame++;
-
-                float3 blended;
-
-                if (!cameraMoving)
-                {
-                    blended = sample;
-                    if (r.voxel != 0)
-                        sampleCountPerPixel[idx] = 1;
-                }
-                else if (r.voxel > 0)
-                {
-                    const float3 P = r.O + r.t * r.D;
-                    float prev_x, prev_y;
-
-                    if (prevCamera.WorldToScreen(P, prev_x, prev_y))
-                    {
-                        const int   ix = static_cast<int>(prev_x);
-                        const int   iy = static_cast<int>(prev_y);
-                        const float fx = prev_x - (float)ix;
-                        const float fy = prev_y - (float)iy;
-
-                        if (ix < 0 || ix + 1 >= SCRWIDTH ||
-                            iy < 0 || iy + 1 >= SCRHEIGHT)
-                        {
-                            blended = sample;
-                            sampleCountPerPixel[idx] = 1;
-                        }
-                        else
-                        {
-                            const float3 h00 = history[ix + iy * SCRWIDTH];
-                            const float3 h10 = history[ix + 1 + iy * SCRWIDTH];
-                            const float3 h01 = history[ix + (iy + 1) * SCRWIDTH];
-                            const float3 h11 = history[ix + 1 + (iy + 1) * SCRWIDTH];
-
-                            const float3 top = lerp(h00, h10, fx);
-                            const float3 bot = lerp(h01, h11, fx);
-                            float3 historySample = lerp(top, bot, fy);
-
-                            blended = 0.8f * historySample + 0.2f * sample;
-                            sampleCountPerPixel[idx] = 6;
-                        }
-                    }
-                    else
+                    const int   ix = static_cast<int>(prev_x);
+                    const int   iy = static_cast<int>(prev_y);
+                    const float fx = prev_x - (float)ix;
+                    const float fy = prev_y - (float)iy;
+                    if (ix < 0 || ix + 1 >= SCRWIDTH ||
+                        iy < 0 || iy + 1 >= SCRHEIGHT)
                     {
                         blended = sample;
                         sampleCountPerPixel[idx] = 1;
+                    }
+                    else
+                    {
+                        const float3 h00 = history[ix + iy * SCRWIDTH];
+                        const float3 h10 = history[ix + 1 + iy * SCRWIDTH];
+                        const float3 h01 = history[ix + (iy + 1) * SCRWIDTH];
+                        const float3 h11 = history[ix + 1 + (iy + 1) * SCRWIDTH];
+                        const float3 top = lerp(h00, h10, fx);
+                        const float3 bot = lerp(h01, h11, fx);
+                        float3 historySample = lerp(top, bot, fy);
+                        blended = 0.8f * historySample + 0.2f * sample;
+                        sampleCountPerPixel[idx] = 6;
                     }
                 }
                 else
@@ -702,11 +691,16 @@ void Renderer::Tick(float deltaTime)
                     blended = sample;
                     sampleCountPerPixel[idx] = 1;
                 }
-
-                accumulator[idx] = blended;
             }
-    }
+            else
+            {
+                blended = sample;
+                sampleCountPerPixel[idx] = 1;
+            }
 
+            accumulator[idx] = blended;
+        }
+}
     // ── Post-process: bloom + tonemap ─────────────────────────
     if (enableBloom)
     {
@@ -1141,6 +1135,7 @@ void Tmpl8::Renderer::InitAccumulator()
 void Tmpl8::Renderer::ResetAccumulator()
 {
     memset(accumulator, 0, SCRWIDTH * SCRHEIGHT * sizeof(float3));
+    memset(history, 0, SCRWIDTH * SCRHEIGHT * sizeof(float3));
     memset(sampleCountPerPixel, 0, SCRWIDTH * SCRHEIGHT * sizeof(int));
     sampleCount = 0;
 }

@@ -202,6 +202,9 @@ namespace Tmpl8
         std::vector<VoxelObject>   voxelObjects;
         std::vector<VoxelInstance> voxelInstances;
 
+        bool instancesShadows = true;
+
+
         // --- TLAS  voxel instances ---
         tinybvh::BVH              instanceBVH;
         bool                      instanceBVHReady = false;
@@ -211,6 +214,14 @@ namespace Tmpl8
         /// @brief  Rebuild TLAS BVH over voxel instances.
         ///         Call after RebuildDirtyInstances(), once per frame.
         void BuildInstanceBVH();
+
+
+        // In private section, alongside TraceSphereBVH:
+        void TraceInstanceBVH(Ray& ray, float& bestT, int& bestInstanceIdx,
+            int& bestAxis, uint& bestVoxel) const;
+        bool TraceInstanceBVHOcclusion(Ray& ray) const;
+
+        static const VoxelInstance* g_instances;
 
 
     private:
@@ -226,7 +237,7 @@ namespace Tmpl8
             const VoxelObject& obj, float tMax,
             int& outFace, uint8_t& outVoxel) const;
 
-        bool TraceObjectDDA_Occlusion(const float3& localO, const float3& localD,
+        bool TraceObjectDDAOcclusion(const float3& localO, const float3& localD,
             const VoxelObject& obj, float tMax) const;
 
         /// @brief  Ray vs AABB slab test.

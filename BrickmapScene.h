@@ -521,6 +521,7 @@ namespace GameScenes
 		s.tickCallback = [bm, bloom](SceneDef&, Tmpl8::Scene& scene,
 			float dt, std::function<void()> reset)
 			{
+				scene.instancesShadows = false;
 				if (bm->needsInit)
 				{
 					bm->needsInit = false;

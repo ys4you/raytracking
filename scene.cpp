@@ -10,6 +10,8 @@
 
 const Sphere* Scene::g_spheres = nullptr;
 
+const VoxelInstance* Scene::g_instances = nullptr;
+
 static void SphereAABB(uint32_t idx, tinybvh::bvhvec3& mn, tinybvh::bvhvec3& mx)
 {
     const Sphere& s = Scene::g_spheres[idx];
@@ -277,6 +279,22 @@ void Scene::BuildSphereBVH()
     }
 }
 
+static void InstanceAABB(uint32_t idx, tinybvh::bvhvec3& mn, tinybvh::bvhvec3& mx)
+{
+    const VoxelInstance& inst = Scene::g_instances[idx];
+    mn = { inst.worldAABBmin.x, inst.worldAABBmin.y, inst.worldAABBmin.z };
+    mx = { inst.worldAABBmax.x, inst.worldAABBmax.y, inst.worldAABBmax.z };
+}
+
+void Scene::BuildInstanceBVH()
+{
+    instanceBVHReady = false;
+    if (voxelInstances.size() < 2) return;
+    g_instances = voxelInstances.data();
+    instanceBVH.Build(InstanceAABB, (uint32_t)voxelInstances.size());
+    instanceBVHReady = true;
+}
+
 
 // ============================================================================
 //  Instance management
@@ -284,13 +302,17 @@ void Scene::BuildSphereBVH()
 
 void Scene::RebuildDirtyInstances()
 {
+    bool anyRebuilt = false;
     for (auto& inst : voxelInstances)
     {
         if (!inst.matricesDirty) continue;
         if (inst.modelIndex < 0 || inst.modelIndex >= (int)voxelObjects.size()) continue;
         const VoxelObject& obj = voxelObjects[inst.modelIndex];
         inst.BuildMatrices(obj.sizeX, obj.sizeY, obj.sizeZ);
+        anyRebuilt = true;
     }
+    if (anyRebuilt || !instanceBVHReady)
+        BuildInstanceBVH();
 }
 
 
@@ -508,13 +530,147 @@ float Scene::TraceObjectDDA(
     return 1e30f;
 }
 
-bool Scene::TraceObjectDDA_Occlusion(
+bool Scene::TraceObjectDDAOcclusion(
     const float3& localO, const float3& localD,
     const VoxelObject& obj, float tMax) const
 {
     int dummyFace;
     uint8_t dummyVoxel;
     return TraceObjectDDA(localO, localD, obj, tMax, dummyFace, dummyVoxel) < tMax;
+}
+
+void Scene::TraceInstanceBVH(
+    Ray& ray, float& bestT,
+    int& bestInstanceIdx, int& bestAxis, uint& bestVoxel) const
+{
+    using Node = tinybvh::BVH::BVHNode;
+
+    tinybvh::Ray tbRay(
+        { ray.O.x, ray.O.y, ray.O.z },
+        { ray.D.x, ray.D.y, ray.D.z },
+        bestT);  // initialises hit.t — node tests prune against this
+
+    const Node* node = &instanceBVH.bvhNode[0];
+    const Node* stack[64];
+    uint32_t stackPtr = 0;
+
+    while (true)
+    {
+        if (node->isLeaf())
+        {
+            for (uint32_t i = 0; i < node->triCount; ++i)
+            {
+                const int si = (int)instanceBVH.primIdx[node->leftFirst + i];
+                const VoxelInstance& inst = voxelInstances[si];
+                if (inst.matricesDirty) continue;
+                if (inst.modelIndex < 0 || inst.modelIndex >= (int)voxelObjects.size()) continue;
+
+                float tEntry, tExit;
+                if (!RayAABB(ray.O, ray.rD, inst.worldAABBmin, inst.worldAABBmax, tEntry, tExit))
+                    continue;
+                if (tEntry >= bestT) continue;
+
+                const float3 localO = inst.worldToLocal.TransformPoint(ray.O);
+                const float3 localD = inst.worldToLocal.TransformVector(ray.D);
+
+                int hitFace; uint8_t hitVoxel;
+                float t = TraceObjectDDA(localO, localD,
+                    voxelObjects[inst.modelIndex], bestT, hitFace, hitVoxel);
+
+                if (t < bestT)
+                {
+                    bestT = t;
+                    bestInstanceIdx = si;
+                    bestAxis = hitFace;
+                    bestVoxel = hitVoxel;
+                    tbRay.hit.t = bestT;  // keep in sync so node tests prune correctly
+                }
+            }
+            if (stackPtr == 0) break;
+            node = stack[--stackPtr];
+            continue;
+        }
+
+        const Node* child1 = &instanceBVH.bvhNode[node->leftFirst];
+        const Node* child2 = &instanceBVH.bvhNode[node->leftFirst + 1];
+        float dist1 = tinybvh::tinybvh_intersect_aabb(tbRay, child1->aabbMin, child1->aabbMax);
+        float dist2 = tinybvh::tinybvh_intersect_aabb(tbRay, child2->aabbMin, child2->aabbMax);
+
+        if (dist1 > dist2) {
+            tinybvh::tinybvh_swap(dist1, dist2);
+            tinybvh::tinybvh_swap(child1, child2);
+        }
+        if (dist1 == BVH_FAR) {
+            if (stackPtr == 0) break;
+            node = stack[--stackPtr];
+        }
+        else {
+            node = child1;
+            if (dist2 != BVH_FAR) stack[stackPtr++] = child2;
+        }
+    }
+}
+
+bool Scene::TraceInstanceBVHOcclusion(Ray& ray) const
+{
+    using Node = tinybvh::BVH::BVHNode;
+
+    tinybvh::Ray tbRay(
+        { ray.O.x, ray.O.y, ray.O.z },
+        { ray.D.x, ray.D.y, ray.D.z },
+        ray.t);
+
+    const Node* node = &instanceBVH.bvhNode[0];
+    const Node* stack[64];
+    uint32_t stackPtr = 0;
+
+    while (true)
+    {
+        if (node->isLeaf())
+        {
+            for (uint32_t i = 0; i < node->triCount; ++i)
+            {
+                const int si = (int)instanceBVH.primIdx[node->leftFirst + i];
+                const VoxelInstance& inst = voxelInstances[si];
+                if (inst.matricesDirty) continue;
+                if (inst.modelIndex < 0 || inst.modelIndex >= (int)voxelObjects.size()) continue;
+
+                float tEntry, tExit;
+                if (!RayAABB(ray.O, ray.rD, inst.worldAABBmin, inst.worldAABBmax, tEntry, tExit))
+                    continue;
+                if (tEntry >= ray.t) continue;
+
+                const float3 localO = inst.worldToLocal.TransformPoint(ray.O);
+                const float3 localD = inst.worldToLocal.TransformVector(ray.D);
+
+                if (TraceObjectDDAOcclusion(localO, localD,
+                    voxelObjects[inst.modelIndex], ray.t))
+                    return true;
+            }
+            if (stackPtr == 0) break;
+            node = stack[--stackPtr];
+            continue;
+        }
+
+        const Node* child1 = &instanceBVH.bvhNode[node->leftFirst];
+        const Node* child2 = &instanceBVH.bvhNode[node->leftFirst + 1];
+        float dist1 = tinybvh::tinybvh_intersect_aabb(tbRay, child1->aabbMin, child1->aabbMax);
+        float dist2 = tinybvh::tinybvh_intersect_aabb(tbRay, child2->aabbMin, child2->aabbMax);
+
+        if (dist1 > dist2) {
+            tinybvh::tinybvh_swap(dist1, dist2);
+            tinybvh::tinybvh_swap(child1, child2);
+        }
+        if (dist1 == BVH_FAR) {
+            if (stackPtr == 0) break;
+            node = stack[--stackPtr];
+        }
+        else {
+            node = child1;
+            if (dist2 != BVH_FAR) stack[stackPtr++] = child2;
+        }
+    }
+    return false;
 }
 
 
@@ -575,41 +731,44 @@ void Scene::FindNearest(Ray& ray) const
     }
 
     // --- 3. Instanced voxel objects (flat TLAS loop) ---
-
-    if (voxelGridActive)
+    // --- 3. Instanced voxel objects (TLAS BVH) ---
+    if (voxelGridActive && !voxelInstances.empty())
     {
-        for (int i = 0; i < (int)voxelInstances.size(); i++)
+        int instIdx = -1, instAxis = -1;
+        uint instVoxel = 0;
+
+        if (instanceBVHReady)
         {
-            const VoxelInstance& inst = voxelInstances[i];
-            if (inst.matricesDirty) continue;
-            if (inst.modelIndex < 0 || inst.modelIndex >= (int)voxelObjects.size()) continue;
-
-            // World-space AABB rejection
-            float tEntry, tExit;
-            if (!RayAABB(ray.O, ray.rD, inst.worldAABBmin, inst.worldAABBmax, tEntry, tExit))
-                continue;
-            if (tEntry >= bestT) continue;
-
-            // Transform ray to object-local space — DO NOT normalize direction
-            const float3 localO = inst.worldToLocal.TransformPoint(ray.O);
-            const float3 localD = inst.worldToLocal.TransformVector(ray.D);
-
-            int     hitFace;
-            uint8_t hitVoxel;
-            const VoxelObject& obj = voxelObjects[inst.modelIndex];
-            float t = TraceObjectDDA(localO, localD, obj, bestT, hitFace, hitVoxel);
-
-            if (t < bestT)
+            TraceInstanceBVH(ray, bestT, instIdx, instAxis, instVoxel);
+        }
+        else
+        {
+            // Fallback linear scan (0 or 1 instances — BVH requires >= 2)
+            for (int i = 0; i < (int)voxelInstances.size(); i++)
             {
-                bestT = t;
-                bestMatIdx = hitVoxel;     // palette index
-                bestAxis = hitFace;      // 0-5 face index
-                bestSphereIdx = -1;
-                bestInstanceIdx = i;
-                bestVoxel = hitVoxel;
+                const VoxelInstance& inst = voxelInstances[i];
+                if (inst.matricesDirty) continue;
+                if (inst.modelIndex < 0 || inst.modelIndex >= (int)voxelObjects.size()) continue;
+                float tEntry, tExit;
+                if (!RayAABB(ray.O, ray.rD, inst.worldAABBmin, inst.worldAABBmax, tEntry, tExit)) continue;
+                if (tEntry >= bestT) continue;
+                const float3 localO = inst.worldToLocal.TransformPoint(ray.O);
+                const float3 localD = inst.worldToLocal.TransformVector(ray.D);
+                int hitFace; uint8_t hitVoxel;
+                float t = TraceObjectDDA(localO, localD,
+                    voxelObjects[inst.modelIndex], bestT, hitFace, hitVoxel);
+                if (t < bestT) { bestT = t; instIdx = i; instAxis = hitFace; instVoxel = hitVoxel; }
             }
         }
 
+        if (instIdx >= 0)
+        {
+            bestMatIdx = instVoxel;
+            bestAxis = instAxis;
+            bestSphereIdx = -1;
+            bestInstanceIdx = instIdx;
+            bestVoxel = instVoxel;
+        }
     }
 
     // --- Write results into ray ---
@@ -622,38 +781,14 @@ void Scene::FindNearest(Ray& ray) const
 }
 
 
-// ============================================================================
-//  IsOccluded — world grid + instanced voxel objects
-// ============================================================================
-
 bool Scene::IsOccluded(Ray& ray) const
 {
-    // World grid
     if (voxelGridActive)
     {
         uint dummyMat = 0;
         int  dummyAxis = -1;
         if (TraverseDDA<true>(ray, 0.f, dummyMat, dummyAxis))
             return true;
-
-        // Instanced objects
-        for (int i = 0; i < (int)voxelInstances.size(); i++)
-        {
-            const VoxelInstance& inst = voxelInstances[i];
-            if (inst.matricesDirty) continue;
-            if (inst.modelIndex < 0 || inst.modelIndex >= (int)voxelObjects.size()) continue;
-
-            float tEntry, tExit;
-            if (!RayAABB(ray.O, ray.rD, inst.worldAABBmin, inst.worldAABBmax, tEntry, tExit))
-                continue;
-            if (tEntry >= ray.t) continue;
-
-            const float3 localO = inst.worldToLocal.TransformPoint(ray.O);
-            const float3 localD = inst.worldToLocal.TransformVector(ray.D);
-
-            if (TraceObjectDDA_Occlusion(localO, localD, voxelObjects[inst.modelIndex], ray.t))
-                return true;
-        }
     }
     return false;
 }
