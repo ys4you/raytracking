@@ -1,7 +1,4 @@
-// Template, IGAD version 2026
-// IGAD/NHTV/BUAS/UU - Jacco Bikker - 2006-2026
 
-// C++ headers
 #include <chrono>
 #include <fstream>
 #include <vector>
@@ -12,37 +9,28 @@
 #include <assert.h>
 #include <io.h>
 
-// header for AVX, and every technology before it.
-// if your CPU does not support this (unlikely), include the appropriate header instead.
-// see: https://stackoverflow.com/a/11228864/2844473
 #include <immintrin.h>
 
-// basic types
 typedef unsigned char uchar;
 typedef unsigned int uint;
 typedef unsigned short ushort;
 typedef unsigned short half;
 #ifdef _MSC_VER
-typedef unsigned char BYTE;		// for freeimage.h
-typedef unsigned short WORD;	// for freeimage.h
-typedef unsigned long DWORD;	// for freeimage.h
-typedef int BOOL;				// for freeimage.h
+typedef unsigned char BYTE;
+typedef unsigned short WORD;
+typedef unsigned long DWORD;
+typedef int BOOL;
 #endif
 
-// "leak" common namespaces to all compilation units. This is not standard
-// C++ practice but a simplification for template projects.
 using namespace std;
 
-// clang-format off
 
-// windows.h: disable as much as possible to speed up compilation.
 #define NOMINMAX
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #define VC_EXTRALEAN
 #endif
 #define NOGDICAPMASKS
-// #define NOVIRTUALKEYCODES
 #define NOWINMESSAGES
 #define NOWINSTYLES
 #define NOSYSMETRICS
@@ -80,7 +68,6 @@ using namespace std;
 #define NOIME
 #include "windows.h"
 
-// aligned memory allocations
 #ifdef _MSC_VER
 #define ALIGN( x ) __declspec( align( x ) )
 #define MALLOC64( x ) ( ( x ) == 0 ? 0 : _aligned_malloc( ( x ), 64 ) )
@@ -98,27 +85,20 @@ using namespace std;
 #define CHECK_RESULT
 #endif
 
-// imgui
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 
-// template headers
 #include "surface.h"
 
-// namespaces
 using namespace Tmpl8;
 
-// math classes
 #include "tmpl8math.h"
 
-// OpenCL headers
-// #define CL_USE_DEPRECATED_OPENCL_2_0_APIS // safe; see https://stackoverflow.com/a/28500846
 #define CL_TARGET_OPENCL_VERSION 300
 #include "cl/cl.h"
 #include <cl/cl_gl.h>
 
-// cross-platform directory access
 #ifdef _MSC_VER
 #include <direct.h>
 #define getcwd _getcwd
@@ -127,7 +107,6 @@ using namespace Tmpl8;
 #include <unistd.h>
 #endif
 
-// GLFW
 #define GLFW_USE_CHDIR 0
 #define GLFW_EXPOSE_NATIVE_WIN32
 #define GLFW_EXPOSE_NATIVE_WGL
@@ -135,23 +114,18 @@ using namespace Tmpl8;
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
 
-// zlib
 #include "zlib.h"
 
-// opencl & opencl
 #include "opencl.h"
 #include "opengl.h"
 
-// fatal error reporting (with a pretty window)
 #define FATALERROR( fmt, ... ) FatalError( "Error on line %d of %s: " fmt "\n", __LINE__, __FILE__, ##__VA_ARGS__ )
 #define FATALERROR_IF( condition, fmt, ... ) do { if ( ( condition ) ) FATALERROR( fmt, ##__VA_ARGS__ ); } while ( 0 )
 #define FATALERROR_IN( prefix, errstr, fmt, ... ) FatalError( prefix " returned error '%s' at %s:%d" fmt "\n", errstr, __FILE__, __LINE__, ##__VA_ARGS__ );
 #define FATALERROR_IN_CALL( stmt, error_parser, fmt, ... ) do { auto ret = ( stmt ); if ( ret ) FATALERROR_IN( #stmt, error_parser( ret ), fmt, ##__VA_ARGS__ ) } while ( 0 )
 
-// global keystate array access
 bool IsKeyDown( const uint key );
 
-// timer
 struct Timer
 {
 	Timer() { reset(); }
@@ -165,7 +139,6 @@ struct Timer
 	chrono::high_resolution_clock::time_point start;
 };
 
-// forward declaration of helper functions
 void FatalError( const char* fmt, ... );
 bool FileIsNewer( const char* file1, const char* file2 );
 bool FileExists( const char* f );
@@ -174,28 +147,21 @@ string TextFileRead( const char* _File );
 int LineCount( const string s );
 void TextFileWrite( const string& text, const char* _File );
 
-// global project settigs; shared with OpenCL
 #include "common.h"
 
-// InstructionSet.cpp
-// Compile by using: cl /EHsc /W4 InstructionSet.cpp
-// processor: x86, x64
-// Uses the __cpuid intrinsic to get information about
-// CPU extended instruction set support.
 
 #include <iostream>
 #include <bitset>
 #include <array>
 #include <intrin.h>
 
-// instruction set detection
 #ifdef _WIN32
 #define cpuid(info, x) __cpuidex(info, x, 0)
 #else
 #include <cpuid.h>
 void cpuid( int info[4], int InfoType ) { __cpuid_count( InfoType, 0, info[0], info[1], info[2], info[3] ); }
 #endif
-class CPUCaps // from https://github.com/Mysticial/FeatureDetector
+class CPUCaps
 {
 public:
 	static inline bool HW_MMX = false;
@@ -206,7 +172,6 @@ public:
 	static inline bool HW_BMI2 = false;
 	static inline bool HW_ADX = false;
 	static inline bool HW_PREFETCHWT1 = false;
-	// SIMD: 128-bit
 	static inline bool HW_SSE = false;
 	static inline bool HW_SSE2 = false;
 	static inline bool HW_SSE3 = false;
@@ -216,23 +181,20 @@ public:
 	static inline bool HW_SSE4a = false;
 	static inline bool HW_AES = false;
 	static inline bool HW_SHA = false;
-	// SIMD: 256-bit
 	static inline bool HW_AVX = false;
 	static inline bool HW_XOP = false;
 	static inline bool HW_FMA3 = false;
 	static inline bool HW_FMA4 = false;
 	static inline bool HW_AVX2 = false;
-	// SIMD: 512-bit
-	static inline bool HW_AVX512F = false;    //  AVX512 Foundation
-	static inline bool HW_AVX512CD = false;   //  AVX512 Conflict Detection
-	static inline bool HW_AVX512PF = false;   //  AVX512 Prefetch
-	static inline bool HW_AVX512ER = false;   //  AVX512 Exponential + Reciprocal
-	static inline bool HW_AVX512VL = false;   //  AVX512 Vector Length Extensions
-	static inline bool HW_AVX512BW = false;   //  AVX512 Byte + Word
-	static inline bool HW_AVX512DQ = false;   //  AVX512 Doubleword + Quadword
-	static inline bool HW_AVX512IFMA = false; //  AVX512 Integer 52-bit Fused Multiply-Add
-	static inline bool HW_AVX512VBMI = false; //  AVX512 Vector Byte Manipulation Instructions
-	// constructor
+	static inline bool HW_AVX512F = false;
+	static inline bool HW_AVX512CD = false;
+	static inline bool HW_AVX512PF = false;
+	static inline bool HW_AVX512ER = false;
+	static inline bool HW_AVX512VL = false;
+	static inline bool HW_AVX512BW = false;
+	static inline bool HW_AVX512DQ = false;
+	static inline bool HW_AVX512IFMA = false;
+	static inline bool HW_AVX512VBMI = false;
 	CPUCaps()
 	{
 		int info[4];
@@ -240,7 +202,6 @@ public:
 		int nIds = info[0];
 		cpuid( info, 0x80000000 );
 		unsigned nExIds = info[0];
-		// detect Features
 		if (nIds >= 0x00000001)
 		{
 			cpuid( info, 0x00000001 );
@@ -287,7 +248,6 @@ public:
 	}
 };
 
-// helper function for conversion of f32 colors to int
 inline uint RGBF32_to_RGB8( const float3& v )
 {
 	uint r = (uint)(255.0f * min( 1.0f, v.x ));
@@ -296,7 +256,6 @@ inline uint RGBF32_to_RGB8( const float3& v )
 	return (r << 16) + (g << 8) + b;
 }
 
-// helper function for conversion of int to f32 colors
 inline float3 RGB8_to_RGBF32( const uint v )
 {
 	float r = ((v >> 16) & 255) * (1.0f / 255.0f);
@@ -305,7 +264,6 @@ inline float3 RGB8_to_RGBF32( const uint v )
 	return float3( r, g, b );
 }
 
-// application base class
 class TheApp
 {
 public:
@@ -325,7 +283,6 @@ public:
 	uint end_of_base_class = 99999;
 };
 
-// dummy app, just here to calculate the size of the data added by derived classes
 class DummyApp : public TheApp
 {
 public:
@@ -336,5 +293,3 @@ public:
 #include "scene.h"
 #include "camera.h"
 #include "renderer.h"
-
-// EOF

@@ -17,11 +17,9 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
 
     scene.FindNearest(ray);
 
-    // ── Miss check ────────────────────────────────────────────
     if (ray.voxel == 0 && ray.sphereIndex < 0 && ray.instanceIndex < 0)
         return sky.GetSkyColor(ray.D);
 
-    // ── Material lookup ───────────────────────────────────────
     const Material* matPtr = nullptr;
     if (ray.sphereIndex >= 0)
         matPtr = &scene.GetSphereMat((uint)scene.sphereSOA.material[ray.sphereIndex]);
@@ -33,7 +31,6 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
     if (!matPtr) return sky.GetSkyColor(ray.D);
     const Material& mat = *matPtr;
 
-    // ── Fast sphere shading (LOD optimisation) ────────────────
     if (fastSphereShading && ray.sphereIndex >= 0 &&
         static_cast<int>(scene.spheres.size()) >= fastSphereThreshold &&
         mat.type != MaterialType::Emissive)
@@ -67,7 +64,6 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
         return color;
     }
 
-    // ── Shading point ─────────────────────────────────────────
     ShadingPoint sp;
     sp.position = ray.IntersectionPoint();
     sp.normal = ray.GetNormal(scene);
@@ -76,14 +72,12 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
     if (debugNormals)
         return 0.5f * (sp.normal + float3(1.0f));
 
-    // ── Material shading ──────────────────────────────────────
     switch (mat.type)
     {
     case MaterialType::Lambertian:
     {
-        // Hemisphere ambient: faces pointing up get more light (clinical ceiling wash)
-        float hemi = 0.5f + 0.5f * sp.normal.y;  // 0.5 at floor-facing, 1.0 at ceiling-facing
-        float3 color = float3(0.25f + 0.15f * hemi);  // 0.25–0.40 ambient range
+        float hemi = 0.5f + 0.5f * sp.normal.y;
+        float3 color = float3(0.25f + 0.15f * hemi);
 
         for (const PointLight& l : lights.points)             if (l.enabled) color += IlluminatePoint(l, sp, scene);
         for (const DirectionalLight& l : lights.directionals) if (l.enabled) color += IlluminateDirectional(l, sp, scene);
@@ -143,9 +137,6 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
 }
 
 
-// -----------------------------------------------------------
-// Bloom post-process
-// -----------------------------------------------------------
 void Renderer::ApplyBloom() const
 {
 #pragma omp parallel for schedule(static)
@@ -236,9 +227,6 @@ void Renderer::ApplyBloom() const
 }
 
 
-// -----------------------------------------------------------
-// Init
-// -----------------------------------------------------------
 void Renderer::Init()
 {
     std::cout << "screen width: " << SCRWIDTH << " screen height: " << SCRHEIGHT << std::endl;
@@ -304,7 +292,6 @@ void Renderer::Init()
     sceneManager.LoadScene(0, scene, camera, sky, lights);
     lastLoadedSceneID = sceneManager.CurrentID();
 
-    // Physics setup — now spheres actually exist
     if (sceneManager.HasActive() && sceneManager.Active().usePhysics)
     {
         for (int i = 0; i < static_cast<int>(scene.spheres.size()); i++)
@@ -332,14 +319,11 @@ void Renderer::Init()
         useSplineCamera = false;
     }
 
-    // ── Event system setup ────────────────────────────────────
     eventSystem.Load("events.bin");
 
-    // Register known event types for brickmap
     eventSystem.knownTypes.push_back("brickmap_speed");
     eventSystem.knownTypes.push_back("brickmap_reset");
 
-    // Fade in: screen goes from fade color to visible
     eventSystem.RegisterHandler("fade_in", [this](const TimeEvent& e) {
         float duration = e.param1 > 0.0f ? e.param1 : 1.0f;
         fadeOpacity = 1.0f;
@@ -350,7 +334,6 @@ void Renderer::Init()
             fadeColor = float3(0, 0, 0);
         });
 
-    // Fade out: screen goes from visible to fade color
     eventSystem.RegisterHandler("fade_out", [this](const TimeEvent& e) {
         float duration = e.param1 > 0.0f ? e.param1 : 1.0f;
         fadeTarget = 1.0f;
@@ -360,7 +343,6 @@ void Renderer::Init()
             fadeColor = float3(0, 0, 0);
         });
 
-    // Scene change
     eventSystem.RegisterHandler("scene_change", [this](const TimeEvent& e) {
         int idx = (int)e.param1;
         if (idx >= 0 && idx < sceneManager.SceneCount())
@@ -372,7 +354,6 @@ void Renderer::Init()
         }
         });
 
-    // Camera cut (same as scene_change)
     eventSystem.RegisterHandler("camera_cut", [this](const TimeEvent& e) {
         int idx = (int)e.param1;
         if (idx >= 0 && idx < sceneManager.SceneCount())
@@ -384,18 +365,15 @@ void Renderer::Init()
         }
         });
 
-    // Flash: instant bloom spike
     eventSystem.RegisterHandler("flash", [this](const TimeEvent& e) {
         bloomIntensity = e.param1 > 0 ? e.param1 : 1.0f;
         ResetAccumulator();
         });
 
-    // Bloom pulse
     eventSystem.RegisterHandler("bloom_pulse", [this](const TimeEvent& e) {
         bloomIntensity = e.param1;
         });
 
-    // Custom handler — strParam routes to sub-actions
     eventSystem.RegisterHandler("custom", [this](const TimeEvent& e) {
         if (e.strParam == "fade_in_lights")
         {
@@ -435,7 +413,6 @@ void Renderer::Init()
         ResetAccumulator();
         });
 
-    // ── Brickmap scene event hooks ────────────────────────────
     eventSystem.RegisterHandler("brickmap_speed", [](const TimeEvent& e) {
         auto& bm = GameScenes::GetBrickmapState();
         if (bm) bm->speedMul = e.param1;
@@ -445,20 +422,15 @@ void Renderer::Init()
         if (bm) bm->Reset();
         });
 
-    // ── Start music ───────────────────────────────────────────
     AudioSystem::Get().Play("assets/Audio/Music/ambient.mp3", true);
     eventSystem.SetTrack(AudioSystem::Get().GetSound("assets/Audio/Music/ambient.mp3"));
 }
 
 
-// -----------------------------------------------------------
-// Tick
-// -----------------------------------------------------------
 void Renderer::Tick(float deltaTime)
 {
     const float3 orbitCenter = float3(0.5f, 0.5f, 0.5f);
 
-    // ── Detect scene change ───────────────────────────────────
     if (sceneManager.HasActive() && sceneManager.CurrentID() != lastLoadedSceneID)
     {
         lastLoadedSceneID = sceneManager.CurrentID();
@@ -479,7 +451,6 @@ void Renderer::Tick(float deltaTime)
             useSplineCamera = false;
         }
 
-        // Rebuild physics for new scene
         physics.balls.clear();
         physics.accumulator = 0.0;
         if (sceneManager.Active().usePhysics)
@@ -522,7 +493,6 @@ void Renderer::Tick(float deltaTime)
         lights.directionals[1] = sky.moon;
     }
 
-    // ── Store original light colors once after scene load ─────
     if (!lightColorsStored && !lights.points.empty())
     {
         originalPointLightColors.clear();
@@ -531,7 +501,6 @@ void Renderer::Tick(float deltaTime)
         lightColorsStored = true;
     }
 
-    // ── Light fade update ─────────────────────────────────────
     if (lightFadeActive)
     {
         lightFadeTimer += dt;
@@ -545,7 +514,6 @@ void Renderer::Tick(float deltaTime)
         ResetAccumulator();
     }
 
-    // ── Apply light fade multiplier ───────────────────────────
     if (lightColorsStored)
     {
         for (int i = 0; i < (int)lights.points.size() && i < (int)originalPointLightColors.size(); i++)
@@ -584,20 +552,18 @@ void Renderer::Tick(float deltaTime)
             ResetAccumulator();
         }
     }
-    // ── Event system tick ─────────────────────────────────────
     eventSystem.Tick(deltaTime);
 
-    // Brickmap bloom spike — adds on top of base bloom
     {
         auto& bm = GameScenes::GetBrickmapState();
         if (bm && bm->bloomSpike > 0.01f)
         {
-            bloomIntensity = 0.3f + bm->bloomSpike;  // base + spike
+            bloomIntensity = 0.3f + bm->bloomSpike;
             ResetAccumulator();
         }
         else
         {
-            bloomIntensity = 0.3f;  // restore base
+            bloomIntensity = 0.3f;
         }
     }
 
@@ -605,7 +571,6 @@ void Renderer::Tick(float deltaTime)
     if (bm && useSplineCamera)
         cameraFollower.speed = bm->camSpeedRequest;
 
-    // ── Per-frame scene logic ─────────────────────────────────
     if (sceneManager.HasActive() && sceneManager.Active().tickCallback)
     {
         sceneManager.Active().tickCallback(
@@ -614,17 +579,15 @@ void Renderer::Tick(float deltaTime)
         );
     }
 
-    // ── Tile-based rendering ──────────────────────────────────
     constexpr int TILE = 16;
     const int tilesX = (SCRWIDTH + TILE - 1) / TILE;
     const int tilesY = (SCRHEIGHT + TILE - 1) / TILE;
     const int totalTiles = tilesX * tilesY;
 
-    // Before the tile loop in Tick()
     if (!scene.voxelInstances.empty())
     {
         memset(history, 0, SCRWIDTH * SCRHEIGHT * sizeof(float3));
-        sampleCount = 0;  // forces traceThisPixel = true for every pixel
+        sampleCount = 0;
     }
 
     const bool hasInstances = !scene.voxelInstances.empty();
@@ -659,7 +622,6 @@ for (int tileIdx = 0; tileIdx < totalTiles; ++tileIdx)
             totalRaysThisFrame++;
             float3 blended;
 
-            // Instances move every frame — never reproject them
             if (r.instanceIndex >= 0)
             {
                 blended = sample;
@@ -715,7 +677,6 @@ for (int tileIdx = 0; tileIdx < totalTiles; ++tileIdx)
             accumulator[idx] = blended;
         }
 }
-    // ── Post-process: bloom + tonemap ─────────────────────────
     if (enableBloom)
     {
         ApplyBloom();
@@ -734,7 +695,6 @@ for (int tileIdx = 0; tileIdx < totalTiles; ++tileIdx)
         }
     }
 
-    // ── Screen fade overlay ───────────────────────────────────
     {
         if (fadeOpacity < fadeTarget)
             fadeOpacity = min(fadeOpacity + fadeSpeed * dt, fadeTarget);
@@ -783,9 +743,6 @@ for (int tileIdx = 0; tileIdx < totalTiles; ++tileIdx)
 }
 
 
-// -----------------------------------------------------------
-// Stats window
-// -----------------------------------------------------------
 void Renderer::UIStats()
 {
     ImGui::Begin("Stats", nullptr, ImGuiWindowFlags_NoCollapse);
@@ -820,7 +777,6 @@ void Renderer::UIStats()
 }
 
 
-// -----------------------------------------------------------
 static void LightColorDot(float3 c)
 {
     ImGui::ColorButton("##dot", ImVec4(c.x, c.y, c.z, 1.0f),
@@ -832,9 +788,6 @@ static void LightColorDot(float3 c)
 }
 
 
-// -----------------------------------------------------------
-// Inspector panel
-// -----------------------------------------------------------
 void Renderer::UI()
 {
     ImGui::Begin("Inspector");
@@ -844,7 +797,6 @@ void Renderer::UI()
 
     UIStats();
 
-    // ── Debug / Camera ────────────────────────────────────────
     if (ImGui::CollapsingHeader("Camera & Debug"))
     {
         if (ImGui::Checkbox("Show Normals", &debugNormals))
@@ -890,7 +842,6 @@ void Renderer::UI()
         }
     }
 
-    // ── Post-Processing ──────────────────────────────────────
     if (ImGui::CollapsingHeader("Post-Processing"))
     {
         bool ppChanged = false;
@@ -910,7 +861,6 @@ void Renderer::UI()
         if (ppChanged) ResetAccumulator();
     }
 
-    // ── Sky ──────────────────────────────────────────────────
     if (ImGui::CollapsingHeader("Sky"))
     {
         bool skyChanged = false;
@@ -942,7 +892,6 @@ void Renderer::UI()
         if (skyChanged) ResetAccumulator();
     }
 
-    // ── Lights ──────────────────────────────────────────────
     if (ImGui::CollapsingHeader("Lights"))
     {
         bool lightsChanged = false;
@@ -1051,7 +1000,6 @@ void Renderer::UI()
         if (lightsChanged) ResetAccumulator();
     }
 
-    // ── Materials ────────────────────────────────────────────
     if (ImGui::CollapsingHeader("Materials"))
     {
         bool materialsChanged = false;
@@ -1074,7 +1022,6 @@ void Renderer::UI()
 }
 
 
-// -----------------------------------------------------------
 bool Renderer::MaterialUI(const char* label, Material& material)
 {
     ImGui::PushID(label);
@@ -1129,14 +1076,12 @@ bool Renderer::MaterialUI(const char* label, Material& material)
 }
 
 
-// -----------------------------------------------------------
 void Renderer::Shutdown()
 {
     eventSystem.Save("events.bin");
 }
 
 
-// -----------------------------------------------------------
 void Tmpl8::Renderer::InitAccumulator()
 {
     if (!accumulator)
@@ -1145,7 +1090,6 @@ void Tmpl8::Renderer::InitAccumulator()
 }
 
 
-// -----------------------------------------------------------
 void Tmpl8::Renderer::ResetAccumulator()
 {
     memset(accumulator, 0, SCRWIDTH * SCRHEIGHT * sizeof(float3));
@@ -1155,7 +1099,6 @@ void Tmpl8::Renderer::ResetAccumulator()
 }
 
 
-// -----------------------------------------------------------
 void Renderer::MouseDown(int button)
 {
     if (button == 0)

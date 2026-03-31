@@ -11,7 +11,6 @@ AreaLight::AreaLight(const float3& c, const float3& e1, const float3& e2, const 
     edge1 = e1;
     edge2 = e2;
 
-    // Normal is perpendicular to the area light surface
     normal = normalize(cross(edge1, edge2));
 
     color = col;
@@ -34,11 +33,9 @@ float3 AreaLight::Illuminate(const ShadingPoint& sp, Scene& scene) const
             float dist = length(L);
             float3 Ldir = normalize(L);
 
-            // One-sided emission check
             if (dot(normal, -Ldir) <= 0.0f)
                 continue;
 
-            // Shadow ray
             Ray shadowRay(
                 sp.position + sp.normal * EPS,
                 Ldir,

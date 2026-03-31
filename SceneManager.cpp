@@ -3,7 +3,7 @@
 #include "scene.h"
 #include "camera.h"
 #include "Sky.h"
-#include "renderer.h"     // for SceneLights
+#include "renderer.h"
 #include "VoxLoader.h"
 #include "VoxelFactory.h"
 #include <unordered_map>
@@ -28,9 +28,6 @@ const SceneDef& SceneManager::Active() const
 	return emptyScene;
 }
 
-// ============================================================
-// LoadScene — clear everything, rebuild from SceneDef
-// ============================================================
 void SceneManager::LoadScene(int id, Tmpl8::Scene& worldScene,
 	Tmpl8::Camera& camera, Sky& sky,
 	SceneLights& lights)
@@ -45,22 +42,18 @@ void SceneManager::LoadScene(int id, Tmpl8::Scene& worldScene,
 	printf("[SceneManager] Loading scene %d: '%s'\n", id, def.name);
 	Timer t;
 
-	// ---- 1. Set voxel grid flag & conditionally clear ----
 	worldScene.voxelGridActive = def.useVoxelGrid;
 	if (def.useVoxelGrid)
 		worldScene.ClearWorld();
 
-	// ---- 2. Clear spheres ----
 	worldScene.spheres.clear();
 
-	// ---- 3. Clear voxel objects/instances ----
 	worldScene.voxelObjects.clear();
 	worldScene.voxelInstances.clear();
 
 	if (def.gridBuilder)
 		def.gridBuilder(worldScene);
 
-	// ---- 4. Load .vox files (only if grid is active) ----
 	if (def.useVoxelGrid)
 	{
 		std::unordered_map<std::string, int> voxCache;
@@ -106,24 +99,20 @@ void SceneManager::LoadScene(int id, Tmpl8::Scene& worldScene,
 		}
 	}
 
-	// ---- 5. Place spheres (always, even without grid) ----
 	for (const auto& s : def.spheres)
 		worldScene.spheres.push_back({ s.center, s.radius, s.material });
 
 	worldScene.BuildSphereBVH();
 
-	// ---- 6. Camera ----
 	camera.camPos = def.camPos;
 	camera.camTarget = def.camTarget;
 
-	// ---- 7. Sky ----
 	sky.timeOfDay = def.sky.timeOfDay;
 	sky.sunNoonColor = def.sky.sunColor;
 	sky.sunIntensity = def.sky.sunIntensity;
 	sky.skyCacheDirty = true;
 	sky.animate = def.sky.animate;
 
-	// ---- 8. Lights ----
 	lights.points.clear();
 	lights.directionals.clear();
 	lights.spots.clear();
@@ -137,10 +126,8 @@ void SceneManager::LoadScene(int id, Tmpl8::Scene& worldScene,
 	for (const auto& sl : def.spotLights)      lights.spots.push_back(sl);
 	for (const auto& al : def.areaLights)      lights.areas.push_back(al);
 
-	// ---- 9. Rebuild all instance matrices ----
 	worldScene.RebuildDirtyInstances();
 
-	// Debug: print instance AABBs and test a ray
 	for (int i = 0; i < (int)worldScene.voxelInstances.size(); i++)
 	{
 		const auto& inst = worldScene.voxelInstances[i];
@@ -158,7 +145,6 @@ void SceneManager::LoadScene(int id, Tmpl8::Scene& worldScene,
 	}
 
 
-	// ---- 10. Done ----
 	currentID = id;
 	printf("[SceneManager] Loaded '%s' in %.1fms  %d voxObj, %d voxInst, %d sph, %d lights\n",
 		def.name, t.elapsed() * 1000.0f,
@@ -169,9 +155,6 @@ void SceneManager::LoadScene(int id, Tmpl8::Scene& worldScene,
 			lights.spots.size() + lights.areas.size()));
 }
 
-// ============================================================
-// UI — scene selector + per-scene editable params
-// ============================================================
 void SceneManager::UI(Tmpl8::Scene& worldScene, Tmpl8::Camera& camera,
 	Sky& sky, SceneLights& lights,
 	std::function<void()> resetAccumulator)

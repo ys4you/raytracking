@@ -38,7 +38,6 @@ inline float3 IlluminateSpot(
 
     float3 L = toLight / distance;
 
-    // Shadow ray — limited to light distance
     constexpr float EPS = 0.001f;
     Ray shadowRay(sp.position + sp.normal * EPS, L, distance - EPS);
     if (scene.IsOccluded(shadowRay))
@@ -51,7 +50,6 @@ inline float3 IlluminateSpot(
     float cosOuter = cosf(outerAngle * 0.5f * DEG2RAD);
     float cosInner = cosf(innerAngle * 0.5f * DEG2RAD);
 
-    // Spot cone — compare light direction with direction TO the point
     float spotFactor = dot(light.direction, -L);
     if (spotFactor < cosOuter)
         return float3(0);

@@ -1,11 +1,8 @@
-// Template, IGAD version 2026
-// IGAD/NHTV/BUAS/UU - Jacco Bikker - 2006-2026
 
 #include "template.h"
 
 extern bool IGP_detected;
 
-// OpenGL helper functions
 void _CheckGL( const char* f, int l )
 {
 	GLenum error = glGetError();
@@ -63,7 +60,6 @@ void DrawQuad()
 	static GLuint vao = 0;
 	if (!vao)
 	{
-		// generate buffers
 		static const GLfloat verts[] = { -1, 1, 1, 1, -1, -1, 1, 1, -1, -1, 1, -1 };
 		GLuint vbo = CreateVBO( verts, sizeof( verts ) );
 		glGenVertexArrays( 1, &vao );
@@ -84,7 +80,6 @@ void DrawQuad()
 	glBindVertexArray( 0 );
 }
 
-// OpenGL texture wrapper class
 GLTexture::GLTexture( uint w, uint h, uint type )
 {
 	width = w, height = h;
@@ -92,7 +87,6 @@ GLTexture::GLTexture( uint w, uint h, uint type )
 	glBindTexture( GL_TEXTURE_2D, ID );
 	if (type == DEFAULT)
 	{
-		// regular texture
 		glTexImage2D( GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_BGR, GL_UNSIGNED_BYTE, 0 );
 		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST );
 		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST );
@@ -107,7 +101,6 @@ GLTexture::GLTexture( uint w, uint h, uint type )
 	}
 	else /* type == FLOAT */
 	{
-		// floating point texture
 		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE );
 		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE );
 		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST );
@@ -145,7 +138,6 @@ void GLTexture::CopyTo( Surface* dst )
 	CheckGL();
 }
 
-// Shader class implementation
 Shader::Shader( const char* vfile, const char* pfile, bool fromString )
 {
 	if (fromString)

@@ -17,7 +17,6 @@ Ray::Ray(const float3 origin, const float3 direction, const float rayLength, con
 
 float3 Ray::GetNormal(const Scene& scene) const
 {
-    // Sphere hit
     if (sphereIndex >= 0)
     {
         float3 hitPos = O + t * D;
@@ -29,22 +28,19 @@ float3 Ray::GetNormal(const Scene& scene) const
         return normalize(hitPos - centre);
     }
 
-    // TLAS instance hit — Bikker's fractional-position method
     if (instanceIndex >= 0)
     {
         const VoxelInstance& inst = scene.voxelInstances[instanceIndex];
 
-        // 1. Get hit point in local voxel space
+        // Compute fractional position inside the hit voxel cell.
         float3 hitWorld = O + t * D;
         float3 hitLocal = inst.worldToLocal.TransformPoint(hitWorld);
 
-        // 2. Fractional position within the hit voxel
         float3 fG(hitLocal.x - floorf(hitLocal.x),
             hitLocal.y - floorf(hitLocal.y),
             hitLocal.z - floorf(hitLocal.z));
         float3 d = fminf(fG, 1.0f - fG);
 
-        // 3. Closest face = smallest distance component
         float3 localD = inst.worldToLocal.TransformVector(D);
         float mind = min(min(d.x, d.y), d.z);
         float3 localN(0, 0, 0);
@@ -52,7 +48,7 @@ float3 Ray::GetNormal(const Scene& scene) const
         else if (mind == d.y) localN.y = (localD.y > 0) ? -1.0f : 1.0f;
         else                  localN.z = (localD.z > 0) ? -1.0f : 1.0f;
 
-        // 4. Transform local normal to world space
+        // Transform local normal back to world space using inverse-transpose form.
         float3 wn;
         wn.x = inst.worldToLocal[0] * localN.x + inst.worldToLocal[4] * localN.y + inst.worldToLocal[8] * localN.z;
         wn.y = inst.worldToLocal[1] * localN.x + inst.worldToLocal[5] * localN.y + inst.worldToLocal[9] * localN.z;
@@ -60,7 +56,6 @@ float3 Ray::GetNormal(const Scene& scene) const
         return normalize(wn);
     }
 
-    // World-grid voxel hit
     if (axis < 0 || axis > 2)
         return float3(0, 1, 0);
     const float3 sign = Dsign * 2.0f - 1.0f;
@@ -77,4 +72,3 @@ float3 Ray::GetAlbedo(const Scene& scene) const
     }
     return scene.GetMat(voxel).albedo;
 }
-

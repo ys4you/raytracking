@@ -140,46 +140,54 @@ namespace Tmpl8
             int    axis;
         };
 
+        /// <summary>Returns the voxel value at world coordinates.</summary>
         uint GetVoxel(uint x, uint y, uint z) const;
+        /// <summary>Allocates a new brick for sparse voxel storage.</summary>
         uint AllocateBrick();
 
+        /// <summary>Constructs an empty scene with default storage.</summary>
         Scene();
 
+        /// <summary>Finds the nearest intersection for a ray.</summary>
         void FindNearest(Ray& ray) const;
+        /// <summary>Returns true when any geometry occludes the ray.</summary>
         bool IsOccluded(Ray& ray) const;
+        /// <summary>Sets a world voxel value at integer coordinates.</summary>
         void Set(const uint x, const uint y, const uint z, const uint v);
+        /// <summary>Sets a world voxel with bounds-safe integer coordinates.</summary>
         void SetVoxel(int x, int y, int z, uint materialIndex);
+        /// <summary>Builds the sphere BVH acceleration structure.</summary>
         void BuildSphereBVH();
 
-        /// @brief  Rebuild matrices for any dirty voxel instances.
-        ///         Call once per frame at the start of Tick, before the render loop.
+        /// <summary>Rebuilds matrices for dirty voxel instances before rendering.</summary>
         void RebuildDirtyInstances();
 
+        /// <summary>Initializes DDA traversal state for a ray.</summary>
         bool Setup3DDDA(Ray& ray, DDAState& state) const;
 
+        /// <summary>Returns material data for a voxel palette value.</summary>
         [[nodiscard]] const Material& GetMat(uint voxelValue) const
         {
             return materials[MAT_COUNT + (voxelValue - 1)];
         }
+        /// <summary>Returns material data for a sphere material identifier.</summary>
         [[nodiscard]] const Material& GetSphereMat(uint matID) const
         {
             return materials[matID];
         }
 
+        /// <summary>Clears the world voxel grid and occupancy map.</summary>
         void ClearWorld()
         {
-            // Zero the coarse grid (no bricks referenced)
             memset(coarseGrid, 0, COARSE_SIZE3 * sizeof(uint));
             memset(occupancy, 0, sizeof(occupancy));
 
-            // Zero every allocated brick (reuse the memory, don't free)
             for (auto* b : bricks)
                 memset(b, 0, BRICK_SIZE3);
         }
 
         bool voxelGridActive = true;
 
-        // ---- Data ----
         uint* coarseGrid;
         std::vector<uint8_t*>                 bricks;
         std::array<Material, MAT_COUNT + 256> materials;
@@ -198,27 +206,25 @@ namespace Tmpl8
         bool                  useLegacyBVH = false;
         static const Sphere* g_spheres;
 
-        // Voxel instancing (TLAS/BLAS)
         std::vector<VoxelObject>   voxelObjects;
         std::vector<VoxelInstance> voxelInstances;
 
         bool instancesShadows = true;
 
 
-        // --- TLAS  voxel instances ---
         tinybvh::BVH              instanceBVH;
         bool                      instanceBVHReady = false;
         std::vector<int>          instancePrimToSceneIndex;
 
 
-        /// @brief  Rebuild TLAS BVH over voxel instances.
-        ///         Call after RebuildDirtyInstances(), once per frame.
+        /// <summary>Rebuilds the TLAS BVH over voxel instances.</summary>
         void BuildInstanceBVH();
 
 
-        // In private section, alongside TraceSphereBVH:
+        /// <summary>Traces voxel instances through the instance BVH.</summary>
         void TraceInstanceBVH(Ray& ray, float& bestT, int& bestInstanceIdx,
             int& bestAxis, uint& bestVoxel) const;
+        /// <summary>Tests occlusion against voxel instances through the BVH.</summary>
         bool TraceInstanceBVHOcclusion(Ray& ray) const;
 
         static const VoxelInstance* g_instances;
@@ -232,7 +238,6 @@ namespace Tmpl8
         template<bool IsOcclusionRay>
         bool TraverseDDA(Ray& ray, float nearestSphereT, uint& outMaterial, int& outAxis) const;
 
-        // ---- Per-object DDA for instanced voxel objects ----
         float TraceObjectDDA(const float3& localO, const float3& localD,
             const VoxelObject& obj, float tMax,
             int& outFace, uint8_t& outVoxel) const;
@@ -240,7 +245,7 @@ namespace Tmpl8
         bool TraceObjectDDAOcclusion(const float3& localO, const float3& localD,
             const VoxelObject& obj, float tMax) const;
 
-        /// @brief  Ray vs AABB slab test.
+        /// <summary>Performs a slab-based ray versus AABB intersection test.</summary>
         static __forceinline bool RayAABB(const float3& O, const float3& rD,
             const float3& bmin, const float3& bmax,
             float& tEntry, float& tExit)

@@ -1,5 +1,3 @@
-// Template, IGAD version 2026
-// IGAD/NHTV/BUAS/UU - Jacco Bikker - 2006-2026
 
 #include "template.h"
 
@@ -9,10 +7,6 @@
 
 using namespace Tmpl8;
 
-// Enable usage of dedicated GPUs in notebooks
-// Note: this does cause the linker to produce a .lib and .exp file;
-// see http://developer.download.nvidia.com/devzone/devcenter/gamegraphics/files/OptimusRenderingPolicies.pdf
-// Alternatively, you can *disable* this to make your app use less power.
 #ifdef WIN32
 extern "C"
 {
@@ -33,22 +27,16 @@ static int scrwidth = 0, scrheight = 0;
 static TheApp* app = 0;
 uint keystate[512] = { 0 };
 
-// static member data for instruction set support class
 static const CPUCaps cpucaps;
 
-// provide access to the render target, for OpenCL / OpenGL interop
 GLTexture* GetRenderTarget() { return renderTarget; }
 
-// provide access to window focus state
 bool WindowHasFocus() { return hasFocus; }
 
-// provide access to key state array
 bool IsKeyDown( const uint key ) { return keystate[key & 511] == 1; }
 
-// GLFW callbacks
 void InitRenderTarget( int w, int h )
 {
-	// allocate render target and surface
 	scrwidth = w, scrheight = h;
 	renderTarget = new GLTexture( scrwidth, scrheight, GLTexture::INTTARGET );
 }
@@ -86,21 +74,17 @@ static void ApplyUnityStyle()
 {
 	ImGuiStyle& s = ImGui::GetStyle();
 
-	// Shape
 	s.WindowRounding = 4.0f;
 	s.FrameRounding = 3.0f;
 	s.ChildRounding = 4.0f;
 
-	// Spacing (Unity-like density)
 	s.ItemSpacing = ImVec2(6, 4);
 	s.FramePadding = ImVec2(6, 3);
 	s.IndentSpacing = 14.0f;
 
-	// Reduce boxiness
 	s.FrameBorderSize = 0.0f;
 	s.ChildBorderSize = 1.0f;
 
-	// Make sliders feel less tall
 	s.GrabMinSize = 10.0f;
 
 	ImVec4* c = ImGui::GetStyle().Colors;
@@ -112,20 +96,16 @@ static void ApplyUnityStyle()
 	c[ImGuiCol_HeaderHovered] = ImVec4(0.28f, 0.44f, 0.68f, 1.00f);
 }
 
-// Application entry point
 void main()
 {
 	AudioSystem::Get().Init();
-	// set fp flags: denormalize & flush to zero
-	// Thanks Caden Parker
 	_mm_setcsr( _mm_getcsr() | (_MM_FLUSH_ZERO_ON | _MM_DENORMALS_ZERO_ON) );
 	/* in case you need this in Linux, this is the non-windows way:
 	#include <fenv.h>
 	fesetenv(FE_DFL_DISABLE_SSE_DENORMS_ENV); */
-	// open a window
 	if (!glfwInit()) FatalError( "glfwInit failed." );
 	glfwSetErrorCallback( ErrorCallback );
-	glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, 3 ); // 3.3 is enough for our needs
+	glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, 3 );
 	glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, 3 );
 	glfwWindowHint( GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE );
 	glfwWindowHint( GLFW_STENCIL_BITS, GL_FALSE );
@@ -141,7 +121,6 @@ void main()
 #endif
 	if (!window) FatalError( "glfwCreateWindow failed." );
 	glfwMakeContextCurrent( window );
-	// register callbacks
 	glfwSetWindowSizeCallback( window, ReshapeWindowCallback );
 	glfwSetKeyCallback( window, KeyEventCallback );
 	glfwSetWindowFocusCallback( window, WindowFocusCallback );
@@ -149,15 +128,12 @@ void main()
 	glfwSetScrollCallback( window, MouseScrollCallback );
 	glfwSetCursorPosCallback( window, MousePosCallback );
 	glfwSetCharCallback( window, CharEventCallback );
-	// initialize GLAD
 	if (gladLoadGL() == 0) FatalError( "gladLoadGLLoader failed." );
 	glfwSwapInterval( 0 );
-	// prepare OpenGL state
 	glDisable( GL_DEPTH_TEST );
 	glDisable( GL_CULL_FACE );
 	glDisable( GL_BLEND );
 	CheckGL();
-	// we want a console window for text output
 #ifndef FULLSCREEN
 	CONSOLE_SCREEN_BUFFER_INFO coninfo;
 	AllocConsole();
@@ -170,27 +146,21 @@ void main()
 	freopen_s( &file, "CON", "w", stderr );
 	SetWindowPos( GetConsoleWindow(), HWND_TOP, 0, 0, 1280, 800, 0 );
 	glfwShowWindow( window );
-	// use the new console window to print some important things
 	printf( "Running voxpopuli, updated on January 27\n" );
 	char dir[2048];
 	printf( "Working directory: %s\n", getcwd( dir, 2048 ) );
 #endif
-	// initialize application
 	InitRenderTarget( SCRWIDTH, SCRHEIGHT );
 	Surface* screen = new Surface( SCRWIDTH, SCRHEIGHT );
 	app = new Renderer();
-	// finalize app
 	app->screen = screen;
 	app->Init();
-	// prep imgui
 	ImGui::CreateContext();
 	ImGui_ImplGlfw_InitForOpenGL( window, true );
 	ImGui_ImplOpenGL3_Init( 0 );
-	//ImGui::StyleColorsDark();
 	ApplyUnityStyle();
 	ImGuiIO& io = ImGui::GetIO();
 	io.IniFilename = "./imgui.ini";
-	// basic shader: apply gamma correction
 	Shader* shader = new Shader(
 		"#version 330\nin vec4 p;\nout vec2 u;void main(){u=vec2((p.x+1)/2,1-(p.y+1)/2);gl_Position=vec4(p.x,p.y,1,1);}",
 		"#version 330\nuniform sampler2D c;in vec2 u;out vec4 f;void main(){f=texture(c,u);}", true );
@@ -202,21 +172,18 @@ void main()
 		deltaTime = min( 500.0f, 1000.0f * timer.elapsed() );
 		timer.reset();
 		app->Tick( deltaTime );
-		// send the rendering result to the screen using OpenGL
 		if (frameNr++ > 1)
 		{
-			// draw template application output
 			if (app->screen) renderTarget->CopyFrom( app->screen );
 			shader->Bind();
 			shader->SetInputTexture( 0, "c", renderTarget );
 			DrawQuad();
 			shader->Unbind();
-			// update imgui
 			ImGui_ImplOpenGL3_NewFrame();
 			ImGui_ImplGlfw_NewFrame();
 			ImGui::NewFrame();
 			app->uiUpdated = true;
-			app->UI(); // app->uiUpdated will be false if Render::UI() was not implemented
+			app->UI();
 			if (app->uiUpdated)
 			{
 				ImGui::Render();
@@ -225,14 +192,12 @@ void main()
 				glfwGetFramebufferSize( window, &display_w, &display_h );
 				glViewport( 0, 0, display_w, display_h );
 			}
-			// finalize frame
 			glfwSwapBuffers( window );
 			glfwPollEvents();
 		}
 		if (!running) break;
 	}
 	AudioSystem::Get().Shutdown();
-	// close down
 	app->Shutdown();
 	delete app;
 	Kernel::KillCL();
@@ -243,7 +208,6 @@ void main()
 	glfwTerminate();
 }
 
-// Helper functions
 bool FileIsNewer( const char* file1, const char* file2 )
 {
 	struct stat f1;
@@ -252,7 +216,7 @@ bool FileIsNewer( const char* file1, const char* file2 )
 	auto ret = stat( file1, &f1 );
 	FATALERROR_IF( ret, "File %s not found!", file1 );
 
-	if (stat( file2, &f2 )) return true; // second file does not exist
+	if (stat( file2, &f2 )) return true;
 
 #ifdef _MSC_VER
 	return f1.st_mtime >= f2.st_mtime;
@@ -2838,5 +2802,3 @@ int gladLoadGLLoader( GLADloadproc load ) {
 	if (!find_extensionsGL()) return 0;
 	return GLVersion.major != 0 || GLVersion.minor != 0;
 }
-
-// EOF

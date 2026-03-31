@@ -1,14 +1,10 @@
-// Template, IGAD version 2026
-// IGAD/NHTV/BUAS/UU - Jacco Bikker - 2006-2026
 
 #pragma once
 
-// OpenCL buffer
 class Buffer
 {
 public:
 	enum { DEFAULT = 0, TEXTURE = 8, TARGET = 16, READONLY = 1, WRITEONLY = 2 };
-	// constructor / destructor
 	Buffer() : hostBuffer( 0 ) {}
 	Buffer( unsigned int N, void* ptr = 0, unsigned int t = DEFAULT );
 	~Buffer();
@@ -21,30 +17,25 @@ public:
 	void CopyFromDevice( const int offset, const int size, const bool blocking = true );
 	void CopyTo( Buffer* buffer );
 	void Clear();
-	// data members
 	unsigned int* hostBuffer;
 	cl_mem deviceBuffer = 0;
 	unsigned int type, size /* in bytes */, textureID;
 	bool ownData, aligned;
 };
 
-// OpenCL kernel
 class Kernel
 {
 	friend class Buffer;
 public:
-	// constructor / destructor
 	Kernel( char* file, char* entryPoint );
 	Kernel( cl_program& existingProgram, char* entryPoint );
 	~Kernel();
-	// get / set
 	cl_kernel& GetKernel() { return kernel; }
 	cl_program& GetProgram() { return program; }
 	static cl_command_queue& GetQueue() { return queue; }
 	static cl_command_queue& GetQueue2() { return queue2; }
 	static cl_context& GetContext() { return context; }
 	static cl_device_id& GetDevice() { return device; }
-	// run methods
 #if 1
 	void Run( cl_event* eventToWaitFor = 0, cl_event* eventToSet = 0 );
 	void Run( cl_mem* buffers, const int count = 1, cl_event* eventToWaitFor = 0, cl_event* eventToSet = 0, cl_event* acq = 0, cl_event* rel = 0 );
@@ -53,8 +44,6 @@ public:
 #endif
 	void Run( const size_t count, const size_t localSize = 0, cl_event* eventToWaitFor = 0, cl_event* eventToSet = 0 );
 	void Run2D( const int2 count, const int2 lsize = 0, cl_event* eventToWaitFor = 0, cl_event* eventToSet = 0 );
-	// Argument passing with template trickery; up to 20 arguments in a single call;
-	// each argument may be of any of the supported types. Approach borrowed from NVIDIA/CUDA.
 #define T_ typename
 	template<T_ A> void SetArguments( A a ) { InitArgs(); SetArgument( 0, a ); }
 	template<T_ A, T_ B> void SetArguments( A a, B b ) { InitArgs(); S( 0, a ); S( 1, b ); }
@@ -170,20 +159,18 @@ private:
 		CheckCLStarted();
 		clSetKernelArg( kernel, idx, sizeof( T ), &value );
 	}
-	// other methods
 public:
 	static bool InitCL();
 	static void CheckCLStarted();
 	static void KillCL();
 private:
-	// data members
 	char* sourceFile = 0;
 	Buffer* acqBuffer = 0;
 	cl_kernel kernel;
 	cl_mem vbo_cl;
 	cl_program program;
 	inline static cl_device_id device;
-	inline static cl_context context; // simplifies some things, but limits us to one device
+	inline static cl_context context;
 	inline static cl_command_queue queue, queue2;
 	inline static char* log = 0;
 	inline static bool isNVidia = false, isAMD = false, isIntel = false, isOther = false;

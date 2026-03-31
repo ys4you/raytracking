@@ -1,14 +1,3 @@
-// ============================================================
-// BrickmapScene.h — Multi-Level Brickmap Culling Visualization
-// ============================================================
-// Demoscene-enhanced version:
-//   - Emissive flash before cull (bricks glow white-hot then vanish)
-//   - Staggered cascade culling (distance-based wave, not all at once)
-//   - Bloom spikes on phase transitions (via renderer callback)
-//   - Camera spline: orbit → push-in on cull → pull-back on hold
-//
-// 79 BPM, cubic ease-out, Side Order palette.
-// ============================================================
 
 #pragma once
 #include "SceneManager.h"
@@ -22,10 +11,10 @@
 namespace GameScenes
 {
 
-	static constexpr uint8_t PAL_BM_WORLD = 230;  // Pure White  #FFFFFF
-	static constexpr uint8_t PAL_BM_EMPTY = 231;  // Near White  #F5F5F5
-	static constexpr uint8_t PAL_BM_FULL = 232;  // Muted Teal  #8CB8B0
-	static constexpr uint8_t PAL_BM_FLASH = 234;  // Emissive flash (white-hot)
+	static constexpr uint8_t PAL_BM_WORLD = 230;
+	static constexpr uint8_t PAL_BM_EMPTY = 231;
+	static constexpr uint8_t PAL_BM_FULL = 232;
+	static constexpr uint8_t PAL_BM_FLASH = 234;
 
 	static constexpr float BM_BPM = 79.0f;
 	static constexpr float BM_BEAT = 60.0f / BM_BPM;
@@ -50,9 +39,9 @@ namespace GameScenes
 		};
 
 		Phase phase = SOLID;
-		Phase prevPhase = SOLID;   // track transitions for bloom spikes
+		Phase prevPhase = SOLID;
 		float phaseTimer = 0.0f;
-		float camSpeedRequest = 0.15f;  // read by renderer each frame
+		float camSpeedRequest = 0.15f;
 		float camHoldTimer = 0.0f;
 
 
@@ -62,9 +51,8 @@ namespace GameScenes
 		float splitL2 = 0.0f;
 		float cullL2 = 0.0f;
 
-		// Bloom spike request (consumed by tickCallback)
 		float bloomSpike = 0.0f;
-		float bloomDecay = 8.0f;  // per second
+		float bloomDecay = 8.0f;
 
 		float durBeats[PHASE_COUNT] = { 3, 2, 3, 2, 3, 4, 2 };
 		float snapBeats = 0.4f;
@@ -88,20 +76,16 @@ namespace GameScenes
 			return 1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t);
 		}
 
-		// Manhattan distance from grid center (for stagger)
 		static float manhattan(int x, int y, int z, float c)
 		{
 			return fabsf(x - c) + fabsf(y - c) + fabsf(z - c);
 		}
 
-		// Staggered cull: each brick gets a delay based on distance
-		// Returns 0..1 for how culled this brick is, with wave delay
 		static float staggeredCull(float globalCull, int x, int y, int z, float c, float maxDist)
 		{
 			if (globalCull <= 0.0f) return 0.0f;
 			if (globalCull >= 1.0f) return 1.0f;
 			float dist = manhattan(x, y, z, c) / maxDist;
-			// Outer bricks cull first, inner ones last
 			float localT = (globalCull - (1.0f - dist) * 0.4f) / 0.6f;
 			return std::clamp(localT, 0.0f, 1.0f);
 		}
@@ -111,12 +95,10 @@ namespace GameScenes
 			memset(fineGrid, 0, sizeof(fineGrid));
 			memset(coarseOcc, 0, sizeof(coarseOcc));
 
-			// Random sparse voxels — ~8-14 out of 512
 			int count = 12 + (rand() % 8);
 			for (int i = 0; i < count; i++)
 				fineGrid[rand() % BM_L2][rand() % BM_L2][rand() % BM_L2] = true;
 
-			// Build coarse occupancy
 			for (int cx = 0; cx < BM_L1; cx++)
 				for (int cy = 0; cy < BM_L1; cy++)
 					for (int cz = 0; cz < BM_L1; cz++)
@@ -161,7 +143,6 @@ namespace GameScenes
 			if (angleY > 2 * PI) angleY -= 2 * PI;
 			if (angleZ > 2 * PI) angleZ -= 2 * PI;
 
-			// Decay bloom spike
 			if (bloomSpike > 0.01f)
 				bloomSpike *= expf(-bloomDecay * dt);
 			else
@@ -182,17 +163,16 @@ namespace GameScenes
 				if (next >= PHASE_COUNT)
 				{
 					next = looping ? SOLID : HOLD;
-					if (looping) Seed(); 
+					if (looping) Seed();
 				}
 
 				phase = (Phase)next;
 				if (!looping && phase == HOLD) paused = true;
 
-				// Fire bloom spike on phase transitions
 				if (phase == CULL_L1 || phase == CULL_L2)
-					bloomSpike = 0.6f;   // strong spike on cull start
+					bloomSpike = 0.6f;
 				else if (phase == SPLIT_L1 || phase == SPLIT_L2)
-					bloomSpike = 0.3f;   // subtle spike on splits
+					bloomSpike = 0.3f;
 				else if (phase == COLLAPSE)
 					bloomSpike = 0.4f;
 			}
@@ -274,10 +254,10 @@ namespace GameScenes
 	{
 		bm.objBase = (int)scene.voxelObjects.size();
 
-		scene.voxelObjects.push_back(VoxelObject(1, 1, 1, { PAL_BM_WORLD }));  // 0: white
-		scene.voxelObjects.push_back(VoxelObject(1, 1, 1, { PAL_BM_EMPTY }));  // 1: near-white
-		scene.voxelObjects.push_back(VoxelObject(1, 1, 1, { PAL_BM_FULL }));   // 2: teal
-		scene.voxelObjects.push_back(VoxelObject(1, 1, 1, { PAL_BM_FLASH }));  // 3: flash
+		scene.voxelObjects.push_back(VoxelObject(1, 1, 1, { PAL_BM_WORLD }));
+		scene.voxelObjects.push_back(VoxelObject(1, 1, 1, { PAL_BM_EMPTY }));
+		scene.voxelObjects.push_back(VoxelObject(1, 1, 1, { PAL_BM_FULL }));
+		scene.voxelObjects.push_back(VoxelObject(1, 1, 1, { PAL_BM_FLASH }));
 
 		auto mat = [](float3 c, float r) -> Material
 			{
@@ -292,7 +272,6 @@ namespace GameScenes
 		scene.materials[MAT_COUNT + (PAL_BM_EMPTY - 1)] = mat(float3(0.96f, 0.96f, 0.96f), 0.30f);
 		scene.materials[MAT_COUNT + (PAL_BM_FULL - 1)] = mat(float3(0.549f, 0.722f, 0.690f), 0.25f);
 
-		// Emissive flash material — white-hot glow before cull
 		{
 			Material m;
 			m.type = MaterialType::Emissive;
@@ -328,7 +307,6 @@ namespace GameScenes
 				return float3(r.x, r.y, r.z) + center;
 			};
 
-		// ── SOLID: single large cube ──────────────────────────────
 		if (bm.gapL1 < 0.001f)
 		{
 			VoxelFactory::CreateInstance(
@@ -343,7 +321,7 @@ namespace GameScenes
 		const float cL1 = (BM_L1 - 1) * 0.5f;
 		const float l1Size = gridExt / (float)BM_L1;
 		const float l1Gap = 5.0f;
-		const float maxDistL1 = cL1 * 3.0f;  // max manhattan for 4³
+		const float maxDistL1 = cL1 * 3.0f;
 
 		bool showL2 = bm.splitL2 > 0.01f;
 
@@ -361,7 +339,6 @@ namespace GameScenes
 					float3 dir((float)cx - cL1, (float)cy - cL1, (float)cz - cL1);
 					l1Pos = l1Pos + dir * l1Gap * bm.gapL1;
 
-					// ── Empty L1: staggered cull with flash ──────────
 					if (!coarseOcc)
 					{
 						float localCull = BrickmapState::staggeredCull(
@@ -372,10 +349,9 @@ namespace GameScenes
 						float s = l1Size * (1.01f - 0.13f * bm.gapL1) * (1.0f - localCull);
 						if (s < 0.5f) continue;
 
-						// Flash emissive when about to vanish (localCull > 0.3)
 						int objIdx = (localCull > 0.3f && localCull < 0.85f)
-							? bm.objBase + 3   // emissive flash
-							: bm.objBase + 1;  // near-white
+							? bm.objBase + 3
+							: bm.objBase + 1;
 
 						VoxelFactory::CreateInstance(
 							scene, objIdx,
@@ -385,7 +361,6 @@ namespace GameScenes
 						continue;
 					}
 
-					// ── Occupied L1 ───────────────────────────────────
 					if (!showL2)
 					{
 						float s = l1Size * (1.01f - 0.13f * bm.gapL1);
@@ -401,7 +376,6 @@ namespace GameScenes
 						continue;
 					}
 
-					// ── L2 subdivision ────────────────────────────────
 					const float l2Size = l1Size / 2.0f;
 					const float l2Gap = 2.0f * bm.splitL2;
 					const float cL2 = 0.5f;
@@ -429,7 +403,6 @@ namespace GameScenes
 
 								if (!fineOcc)
 								{
-									// Staggered L2 cull with flash
 									float localCull = BrickmapState::staggeredCull(
 										bm.cullL2, sx, sy, sz, cL2, maxDistL2);
 
@@ -462,7 +435,6 @@ namespace GameScenes
 	}
 
 
-	// ── Scene ─────────────────────────────────────────────────────
 
 	inline SceneDef BrickmapShowcase()
 	{
@@ -490,7 +462,6 @@ namespace GameScenes
 			float3(0.25f, 0.60f, 0.22f),
 		};
 
-		// ── Clinical lighting ─────────────────────────────────────
 		s.sky.sunDir = normalize(float3(0.3f, -0.5f, 0.2f));
 		s.sky.sunColor = float3(1.0f, 0.98f, 0.95f);
 		s.sky.sunIntensity = 2.0f;
@@ -504,17 +475,16 @@ namespace GameScenes
 				s.pointLights.push_back(l);
 			};
 
-		addL(float3(0.50f, 0.90f, 0.50f), float3(0.9f, 0.88f, 0.85f));   // overhead — bright
-		addL(float3(0.25f, 0.55f, 0.20f), float3(0.4f, 0.4f, 0.45f));    // left fill
-		addL(float3(0.75f, 0.55f, 0.80f), float3(0.4f, 0.4f, 0.45f));    // right fill
-		addL(float3(0.50f, 0.35f, 0.25f), float3(0.25f, 0.25f, 0.28f));  // front low
-		addL(float3(0.50f, 0.45f, 0.80f), float3(0.2f, 0.22f, 0.25f));   // back fill
+		addL(float3(0.50f, 0.90f, 0.50f), float3(0.9f, 0.88f, 0.85f));
+		addL(float3(0.25f, 0.55f, 0.20f), float3(0.4f, 0.4f, 0.45f));
+		addL(float3(0.75f, 0.55f, 0.80f), float3(0.4f, 0.4f, 0.45f));
+		addL(float3(0.50f, 0.35f, 0.25f), float3(0.25f, 0.25f, 0.28f));
+		addL(float3(0.50f, 0.45f, 0.80f), float3(0.2f, 0.22f, 0.25f));
 
 		auto& bm = GetBrickmapState();
 		bm = std::make_shared<BrickmapState>();
 		bm->Seed();
 
-		// Store base bloom for restoration
 		struct BloomState { float baseIntensity = 0.3f; };
 		auto bloom = std::make_shared<BloomState>();
 
@@ -540,7 +510,6 @@ namespace GameScenes
 				bm->TickRotation(dt);
 				bm->TickPhase(dt);
 
-				// Reset hold timer on phase change — but not for COLLAPSE or SOLID
 				if (bm->phase != oldPhase &&
 					bm->phase != BrickmapState::COLLAPSE &&
 					bm->phase != BrickmapState::SOLID)
@@ -548,11 +517,9 @@ namespace GameScenes
 					bm->camHoldTimer = BM_BEAT;
 				}
 
-				// Count down hold timer
 				if (bm->camHoldTimer > 0.0f)
 					bm->camHoldTimer -= dt * 0.001f;
 
-				// Camera speed: hold → ease-in → cruise → brake
 				float dur = bm->durBeats[bm->phase] * BM_BEAT;
 				float progress = (dur > 0) ? bm->phaseTimer / dur : 0;
 
@@ -563,7 +530,7 @@ namespace GameScenes
 				}
 				else if (bm->phase == BrickmapState::CULL_L1 || bm->phase == BrickmapState::CULL_L2)
 				{
-					camSpeed = 0.0f;  // stand still during cull — let the viewer watch
+					camSpeed = 0.0f;
 				}
 				else if (progress < 0.15f)
 				{
@@ -584,7 +551,6 @@ namespace GameScenes
 
 				SyncBrickmap(*bm, scene, bm->GetRot());
 
-				// Only reset accumulator when structure actually changes
 				bool structureChanged =
 					bm->phase != oldPhase ||
 					fabsf(bm->gapL1 - oldGap) > 0.001f ||
@@ -680,4 +646,4 @@ namespace GameScenes
 		return s;
 	}
 
-} // namespace GameScenes
+}

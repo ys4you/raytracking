@@ -1,6 +1,3 @@
-// ============================================================
-// EventSystem.cpp
-// ============================================================
 
 #include "template.h"
 #include "EventSystem.h"
@@ -10,7 +7,6 @@
 #include <cstdio>
 #include <cstring>
 
-// ── Track binding ─────────────────────────────────────────────
 
 void EventSystem::SetTrack(ma_sound* sound)
 {
@@ -18,9 +14,6 @@ void EventSystem::SetTrack(ma_sound* sound)
 	lastCursor = 0.0f;
 	Reset();
 
-	// Cache track length once — ma_sound_get_length_in_seconds
-	// does a brute-force decode scan for MP3s and can crash if
-	// called repeatedly from the UI thread.
 	cachedTrackLength = 120.0f;
 	if (trackedSound)
 	{
@@ -47,14 +40,12 @@ bool EventSystem::IsPlaying() const
 	return ma_sound_is_playing(trackedSound);
 }
 
-// ── Handler registration ──────────────────────────────────────
 
 void EventSystem::RegisterHandler(const std::string& type, EventHandler handler)
 {
 	handlers[type] = handler;
 }
 
-// ── Tick — fire events whose time falls within the frame ──────
 
 void EventSystem::Tick(float /*deltaTimeMs*/)
 {
@@ -64,7 +55,6 @@ void EventSystem::Tick(float /*deltaTimeMs*/)
 
 	float cursor = GetPlaybackTime();
 
-	// Detect loop / seek-back: if cursor jumped backward, reset all fired flags
 	if (cursor < lastCursor - 0.5f)
 		Reset();
 
@@ -72,7 +62,6 @@ void EventSystem::Tick(float /*deltaTimeMs*/)
 	{
 		if (e.fired) continue;
 
-		// Event fires if the cursor has passed it (within tolerance)
 		if (cursor >= e.time - tolerance && cursor <= e.time + tolerance)
 		{
 			e.fired = true;
@@ -82,7 +71,6 @@ void EventSystem::Tick(float /*deltaTimeMs*/)
 		}
 		else if (cursor > e.time + tolerance)
 		{
-			// Missed it (frame skip) — still mark as fired to avoid late trigger
 			e.fired = true;
 		}
 	}
@@ -90,7 +78,6 @@ void EventSystem::Tick(float /*deltaTimeMs*/)
 	lastCursor = cursor;
 }
 
-// ── Reset ─────────────────────────────────────────────────────
 
 void EventSystem::Reset()
 {
@@ -98,7 +85,6 @@ void EventSystem::Reset()
 		e.fired = false;
 }
 
-// ── Event management ──────────────────────────────────────────
 
 void EventSystem::AddEvent(const TimeEvent& e)
 {
@@ -120,30 +106,14 @@ void EventSystem::SortEvents()
 		[](const TimeEvent& a, const TimeEvent& b) { return a.time < b.time; });
 }
 
-// ── Save / Load (simple binary format) ────────────────────────
-//
-// Format:
-//   4 bytes: "EVTS" magic
-//   4 bytes: uint32 event count
-//   Per event:
-//     4 bytes: float time
-//     4 bytes: uint32 type string length
-//     N bytes: type string (no null terminator)
-//     4 bytes: float param1
-//     4 bytes: float param2
-//     4 bytes: float param3
-//     4 bytes: uint32 strParam length
-//     N bytes: strParam string
 
 bool EventSystem::Save(const char* path) const
 {
 	FILE* f = fopen(path, "wb");
 	if (!f) return false;
 
-	// Magic
 	fwrite("EVTS", 1, 4, f);
 
-	// Count
 	uint32_t count = (uint32_t)events.size();
 	fwrite(&count, sizeof(uint32_t), 1, f);
 
@@ -238,11 +208,10 @@ void EventSystem::SeekTo(float seconds)
 	ma_uint32 sampleRate = ma_engine_get_sample_rate(ma_sound_get_engine(trackedSound));
 	ma_uint64 frame = (ma_uint64)(seconds * sampleRate);
 	ma_sound_seek_to_pcm_frame(trackedSound, frame);
-	Reset();  // reset fired flags since we jumped
+	Reset();
 	lastCursor = seconds;
 }
 
-// ── ImGui Editor ──────────────────────────────────────────────
 void EventSystem::UI(std::function<void()> resetAccumulator)
 {
 	if (!ImGui::CollapsingHeader("Event Timeline"))
@@ -254,7 +223,6 @@ void EventSystem::UI(std::function<void()> resetAccumulator)
 	float cursor = GetPlaybackTime();
 	bool playing = IsPlaying();
 
-	// ── Transport controls ────────────────────────────────────
 	ImGui::Text("Playback: %.2fs / %.1fs", cursor, trackLength);
 	ImGui::SameLine();
 	ImGui::TextDisabled("| %d events", (int)events.size());
@@ -282,7 +250,6 @@ void EventSystem::UI(std::function<void()> resetAccumulator)
 
 	ImGui::Spacing();
 
-	// ── Timeline visual ───────────────────────────────────────
 	ImGui::SliderFloat("Zoom", &zoomLevel, 20.0f, 500.0f, "%.0f px/s");
 
 	float timelineWidth = trackLength * zoomLevel;
@@ -363,7 +330,6 @@ void EventSystem::UI(std::function<void()> resetAccumulator)
 
 	ImGui::Spacing();
 
-	// ── Add / Remove buttons ──────────────────────────────────
 	float halfW = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
 
 	if (ImGui::Button("Add Event at Cursor", ImVec2(halfW, 0)))
@@ -394,7 +360,6 @@ void EventSystem::UI(std::function<void()> resetAccumulator)
 
 	ImGui::Spacing();
 
-	// ── Selected event editor ─────────────────────────────────
 	if (selectedEvent >= 0 && selectedEvent < (int)events.size())
 	{
 		ImGui::Separator();
@@ -451,7 +416,6 @@ void EventSystem::UI(std::function<void()> resetAccumulator)
 
 	ImGui::Spacing();
 
-	// ── Event list ────────────────────────────────────────────
 	if (ImGui::TreeNode("All Events"))
 	{
 		for (int i = 0; i < (int)events.size(); i++)
@@ -489,7 +453,6 @@ void EventSystem::UI(std::function<void()> resetAccumulator)
 		ImGui::TreePop();
 	}
 
-	// ── Save / Load buttons ───────────────────────────────────
 	ImGui::Spacing();
 	ImGui::Separator();
 	float thirdW = (ImGui::GetContentRegionAvail().x - 2 * ImGui::GetStyle().ItemSpacing.x) / 3.0f;

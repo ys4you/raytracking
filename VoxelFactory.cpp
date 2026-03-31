@@ -48,7 +48,6 @@ void VoxelFactory::CreateInstance(
     rotRad.x -= 3.14159265f / 2.0f;
 
     VoxelInstance inst(objectIndex, wsPos, rotRad, wsScale, localPivot);
-    // matricesDirty = true by default — RebuildDirtyInstances handles it
     scene.voxelInstances.push_back(inst);
 }
 void VoxelFactory::FromVoxTransform(const ogt_vox_transform& T,
@@ -72,7 +71,6 @@ void VoxelFactory::FlattenInstance(
     float3 scale)
 {
     const VoxelObject& obj = scene.voxelObjects[objectIndex];
-    // No instance record — flattened objects live in the world grid only
     float cx = cosf(rotation.x), sx = sinf(rotation.x);
     float cy = cosf(rotation.y), sy = sinf(rotation.y);
     float cz = cosf(rotation.z), sz = sinf(rotation.z);

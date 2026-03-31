@@ -1,7 +1,4 @@
 ﻿#pragma once
-// ============================================================
-// GameScenes.h — Define your scenes here
-// ============================================================
 #include "SceneManager.h"
 
 
@@ -15,9 +12,6 @@
 namespace GameScenes
 {
 
-	// ============================================================
-	// Shared state for all showcase scenes.
-	// ============================================================
 
 	struct ShowcaseRotation
 	{
@@ -52,9 +46,6 @@ namespace GameScenes
 	}
 
 
-	// ============================================================
-	// Shared showcase setup — sky, camera, lights, callbacks.
-	// ============================================================
 
 	inline void SetupShowcase(SceneDef& s)
 	{
@@ -132,9 +123,6 @@ namespace GameScenes
 	}
 
 
-	// ============================================================
-	// 01 CUBE
-	// ============================================================
 
 	inline SceneDef CubeShowcase()
 	{
@@ -160,9 +148,6 @@ namespace GameScenes
 	}
 
 
-	// ============================================================
-	// 02 MENGER
-	// ============================================================
 
 	inline SceneDef MengerShowcase()
 	{
@@ -188,9 +173,6 @@ namespace GameScenes
 	}
 
 
-	// ============================================================
-	// Sphere Spawner UI helper
-	// ============================================================
 	inline void SphereSpawnerUI(SceneDef& def, Tmpl8::Scene& scene, std::function<void()> resetAcc)
 	{
 		if (!ImGui::CollapsingHeader("Sphere Spawner"))
@@ -330,9 +312,6 @@ namespace GameScenes
 	}
 
 
-	// ============================================================
-	// Physics Demo — balls rolling on voxel terrain
-	// ============================================================
 	inline SceneDef PhysicsDemo()
 	{
 		SceneDef s;
@@ -352,10 +331,9 @@ namespace GameScenes
 			{
 				for (int x = 0; x < 512; x++)
 					for (int z = 0; z < 512; z++)
-						scene.SetVoxel(x, 64, z, 200); 
+						scene.SetVoxel(x, 64, z, 200);
 			};
-		
-		// Spawn balls at the top of the ramp
+
 		const int NUM_BALLS = 12;
 		for (int i = 0; i < NUM_BALLS; i++)
 		{
@@ -377,7 +355,6 @@ namespace GameScenes
 		s.spawner.rangeMin = float3(0.35f, 0.50f, 0.40f);
 		s.spawner.rangeMax = float3(0.65f, 0.55f, 0.50f);
 
-		// Lights
 		PointLight overhead;
 		overhead.position = float3(0.5f, 0.85f, 0.5f);
 		overhead.color = float3(1.5f, 1.45f, 1.4f);
@@ -398,9 +375,6 @@ namespace GameScenes
 		return s;
 	}
 
-	// ============================================================
-	// Register all scenes
-	// ============================================================
 
 	inline void RegisterAllScenes(SceneManager& mgr)
 	{
@@ -416,9 +390,8 @@ namespace GameScenes
 		mgr.AddScene(BrickmapShowcase());
 		mgr.AddScene(InfinityMirrorShowcase());
 
-		//gyroscope
 		mgr.AddScene(GyroscopeShowcase());
 		mgr.AddScene(PhysicsDemo());
 	}
 
-} // namespace GameScenes
+}
