@@ -26,7 +26,7 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
     if (ray.sphereIndex >= 0)
         matPtr = &scene.GetSphereMat((uint)scene.sphereSOA.material[ray.sphereIndex]);
     else if (ray.instanceIndex >= 0 && ray.voxel > 0)
-        matPtr = &scene.GetMat(ray.voxel);
+        matPtr = &scene.GetMat(ray.materialIndex);
     else if (ray.voxel > 0)
         matPtr = &scene.GetMat(ray.materialIndex);
 
@@ -81,11 +81,14 @@ float3 Renderer::Trace(Ray& ray, int depth, int, int)
     {
     case MaterialType::Lambertian:
     {
-        float3 color = float3(0.08f); // ambient floor — prevents pure black faces
+        // Hemisphere ambient: faces pointing up get more light (clinical ceiling wash)
+        float hemi = 0.5f + 0.5f * sp.normal.y;  // 0.5 at floor-facing, 1.0 at ceiling-facing
+        float3 color = float3(0.25f + 0.15f * hemi);  // 0.25–0.40 ambient range
+
         for (const PointLight& l : lights.points)             if (l.enabled) color += IlluminatePoint(l, sp, scene);
         for (const DirectionalLight& l : lights.directionals) if (l.enabled) color += IlluminateDirectional(l, sp, scene);
         for (const SpotLight& l : lights.spots)               if (l.enabled) color += IlluminateSpot(l, sp, scene);
-        for (const AreaLight& l : lights.areas)               if (l.enabled) color += IlluminateArea(l, sp, scene);
+        for (const AreaLight& l : lights.areas)                if (l.enabled) color += IlluminateArea(l, sp, scene);
         color *= mat.albedo;
         return color;
     }
@@ -498,6 +501,7 @@ void Renderer::Tick(float deltaTime)
 
     auto startTime = std::chrono::high_resolution_clock::now();
     sampleCount++;
+    if (!scene.voxelInstances.empty()) sampleCount = 0;
     frameIndex++;
     int totalRaysThisFrame = 0;
 
@@ -616,6 +620,16 @@ void Renderer::Tick(float deltaTime)
     const int tilesY = (SCRHEIGHT + TILE - 1) / TILE;
     const int totalTiles = tilesX * tilesY;
 
+    // Before the tile loop in Tick()
+    if (!scene.voxelInstances.empty())
+    {
+        memset(history, 0, SCRWIDTH * SCRHEIGHT * sizeof(float3));
+        sampleCount = 0;  // forces traceThisPixel = true for every pixel
+    }
+
+    const bool hasInstances = !scene.voxelInstances.empty();
+    if (hasInstances) sampleCount = 0;
+
 #pragma omp parallel for schedule(dynamic, 1) reduction(+:totalRaysThisFrame)
 for (int tileIdx = 0; tileIdx < totalTiles; ++tileIdx)
 {
@@ -633,7 +647,7 @@ for (int tileIdx = 0; tileIdx < totalTiles; ++tileIdx)
                 (((x + y) & 1) == (static_cast<int>(frameIndex) & 1));
             if (!traceThisPixel)
             {
-                accumulator[idx] = history[idx];
+                accumulator[idx] = scene.voxelInstances.empty() ? history[idx] : float3(0);
                 continue;
             }
             const float jx = BlueNoise(x, y, sampleCount);
@@ -657,7 +671,7 @@ for (int tileIdx = 0; tileIdx < totalTiles; ++tileIdx)
                 if (r.voxel != 0)
                     sampleCountPerPixel[idx] = 1;
             }
-            else if (r.voxel > 0)
+            else if (r.voxel > 0 && scene.voxelInstances.empty())
             {
                 const float3 P = r.O + r.t * r.D;
                 float prev_x, prev_y;
@@ -1135,7 +1149,7 @@ void Tmpl8::Renderer::InitAccumulator()
 void Tmpl8::Renderer::ResetAccumulator()
 {
     memset(accumulator, 0, SCRWIDTH * SCRHEIGHT * sizeof(float3));
-    memset(history, 0, SCRWIDTH * SCRHEIGHT * sizeof(float3));
+    if (history) memset(history, 0, SCRWIDTH * SCRHEIGHT * sizeof(float3));
     memset(sampleCountPerPixel, 0, SCRWIDTH * SCRHEIGHT * sizeof(int));
     sampleCount = 0;
 }

@@ -29,25 +29,45 @@ float3 Ray::GetNormal(const Scene& scene) const
         return normalize(hitPos - centre);
     }
 
-    // TLAS instance hit — use precomputed world-space normals
-    // axis stores face index: +X=0, -X=1, +Y=2, -Y=3, +Z=4, -Z=5
+    // TLAS instance hit — Bikker's fractional-position method
     if (instanceIndex >= 0)
     {
-        if (axis >= 0 && axis < 6)
-            return scene.voxelInstances[instanceIndex].worldNormals[axis];
-        return float3(0, 1, 0);
+        const VoxelInstance& inst = scene.voxelInstances[instanceIndex];
+
+        // 1. Get hit point in local voxel space
+        float3 hitWorld = O + t * D;
+        float3 hitLocal = inst.worldToLocal.TransformPoint(hitWorld);
+
+        // 2. Fractional position within the hit voxel
+        float3 fG(hitLocal.x - floorf(hitLocal.x),
+            hitLocal.y - floorf(hitLocal.y),
+            hitLocal.z - floorf(hitLocal.z));
+        float3 d = fminf(fG, 1.0f - fG);
+
+        // 3. Closest face = smallest distance component
+        float3 localD = inst.worldToLocal.TransformVector(D);
+        float mind = min(min(d.x, d.y), d.z);
+        float3 localN(0, 0, 0);
+        if (mind == d.x)      localN.x = (localD.x > 0) ? -1.0f : 1.0f;
+        else if (mind == d.y) localN.y = (localD.y > 0) ? -1.0f : 1.0f;
+        else                  localN.z = (localD.z > 0) ? -1.0f : 1.0f;
+
+        // 4. Transform local normal to world space
+        float3 wn;
+        wn.x = inst.worldToLocal[0] * localN.x + inst.worldToLocal[4] * localN.y + inst.worldToLocal[8] * localN.z;
+        wn.y = inst.worldToLocal[1] * localN.x + inst.worldToLocal[5] * localN.y + inst.worldToLocal[9] * localN.z;
+        wn.z = inst.worldToLocal[2] * localN.x + inst.worldToLocal[6] * localN.y + inst.worldToLocal[10] * localN.z;
+        return normalize(wn);
     }
 
-    // World-grid voxel hit — axis is 0, 1, or 2
+    // World-grid voxel hit
     if (axis < 0 || axis > 2)
         return float3(0, 1, 0);
-
     const float3 sign = Dsign * 2.0f - 1.0f;
     float3 n(0, 0, 0);
     (&n.x)[axis] = (&sign.x)[axis];
     return n;
 }
-
 float3 Ray::GetAlbedo(const Scene& scene) const
 {
     if (sphereIndex >= 0)

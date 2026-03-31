@@ -322,7 +322,7 @@ namespace GameScenes
                 scene, objIdx,
                 orbit(pos),
                 rotDeg,
-                float3(scale)
+                float3(scale), true
             );
         }
 
@@ -397,6 +397,7 @@ namespace GameScenes
                 oc->TickRotation(dt);
                 oc->Tick(dt);
                 SyncOrbitCloud(*oc, scene, oc->GetRot());
+                if (reset) reset();
             };
 
         s.uiCallback = [oc](SceneDef&, Tmpl8::Scene& scene,

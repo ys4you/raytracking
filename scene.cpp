@@ -19,7 +19,6 @@ static void SphereAABB(uint32_t idx, tinybvh::bvhvec3& mn, tinybvh::bvhvec3& mx)
     mx = { s.center.x + s.radius, s.center.y + s.radius, s.center.z + s.radius };
 }
 
-
 // ============================================================================
 //  Sphere traversal (unchanged from your original)
 // ============================================================================
@@ -445,7 +444,7 @@ float Scene::TraceObjectDDA(
     float tExit = min(min(max(tx1, tx2), max(ty1, ty2)), max(tz1, tz2));
 
     if (tExit < tEntry || tExit < 0.f || tEntry >= tMax)
-        return 1e30f;
+        return tMax;
 
     tEntry = max(tEntry, 0.f);
 
@@ -483,11 +482,21 @@ float Scene::TraceObjectDDA(
                 // Face index: +X=0, -X=1, +Y=2, -Y=3, +Z=4, -Z=5
                 if (lastAxis < 0)
                 {
-                    // Entry face from slab test
-                    float etx = min(tx1, tx2), ety = min(ty1, ty2), etz = min(tz1, tz2);
-                    if (tEntry == etx)       outFace = (localD.x > 0) ? 1 : 0;
-                    else if (tEntry == ety)   outFace = (localD.y > 0) ? 3 : 2;
-                    else                      outFace = (localD.z > 0) ? 5 : 4;
+                    // Use hit position to determine entry face — much more robust
+                    // than comparing slab t-values with floating-point equality
+                    float3 hitLocal = localO + localD * max(tEntry, 0.f);
+                    float dists[6] = {
+                        (float)obj.sizeX - hitLocal.x,  // +X face (index 0)
+                        hitLocal.x,                      // -X face (index 1)
+                        (float)obj.sizeY - hitLocal.y,  // +Y face (index 2)
+                        hitLocal.y,                      // -Y face (index 3)
+                        (float)obj.sizeZ - hitLocal.z,  // +Z face (index 4)
+                        hitLocal.z                       // -Z face (index 5)
+                    };
+                    outFace = 0;
+                    float minD = dists[0];
+                    for (int f = 1; f < 6; f++)
+                        if (dists[f] < minD) { minD = dists[f]; outFace = f; }
                 }
                 else
                 {
@@ -527,7 +536,7 @@ float Scene::TraceObjectDDA(
             }
         }
     }
-    return 1e30f;
+    return tMax;
 }
 
 bool Scene::TraceObjectDDAOcclusion(
@@ -581,10 +590,19 @@ void Scene::TraceInstanceBVH(
                 {
                     bestT = t;
                     bestInstanceIdx = si;
-                    bestAxis = hitFace;
                     bestVoxel = hitVoxel;
-                    tbRay.hit.t = bestT;  // keep in sync so node tests prune correctly
+                    tbRay.hit.t = bestT;
+
+                    // Ignore hitFace from DDA — compute from world-space ray direction instead
+                    // The face we hit is the one whose inward normal most opposes the ray
+                    float bestDot = 1e30f;
+                    for (int f = 0; f < 6; f++)
+                    {
+                        float d = dot(ray.D, inst.worldNormals[f]);
+                        if (d < bestDot) { bestDot = d; bestAxis = f; }
+                    }
                 }
+
             }
             if (stackPtr == 0) break;
             node = stack[--stackPtr];
@@ -694,9 +712,14 @@ void Scene::FindNearest(Ray& ray) const
     {
         if (useLegacyBVH && sphereBVHReady)
         {
-            tinybvh::Ray bvhRay({ ray.O.x, ray.O.y, ray.O.z }, { ray.D.x, ray.D.y, ray.D.z });
+            tinybvh::Ray bvhRay({ ray.O.x, ray.O.y, ray.O.z },
+                { ray.D.x, ray.D.y, ray.D.z });
             TraceSphereBVH(bvhRay);
-            if (bvhRay.hit.t < 1e30f) { nearestSphereT = bvhRay.hit.t; nearestSphereIdx = (int)bvhRay.hit.prim; }
+            if (bvhRay.hit.t < 1e30f)
+            {
+                nearestSphereT = bvhRay.hit.t;
+                nearestSphereIdx = (int)bvhRay.hit.prim;
+            }
         }
         else if (sphereGrid.ready)
         {
@@ -716,8 +739,8 @@ void Scene::FindNearest(Ray& ray) const
     // --- 2. World-grid DDA ---
     if (voxelGridActive)
     {
-        uint  hitMat = 0;
-        int   hitAxis = -1;
+        uint hitMat = 0;
+        int  hitAxis = -1;
         ray.t = 1e34f;
         if (TraverseDDA<false>(ray, bestT, hitMat, hitAxis) && ray.t < bestT)
         {
@@ -730,11 +753,11 @@ void Scene::FindNearest(Ray& ray) const
         }
     }
 
-    // --- 3. Instanced voxel objects (flat TLAS loop) ---
-    // --- 3. Instanced voxel objects (TLAS BVH) ---
-    if (voxelGridActive && !voxelInstances.empty())
+    // --- 3. Instanced voxel objects (TLAS BVH or fallback linear scan) ---
+    if (!voxelInstances.empty())
     {
-        int instIdx = -1, instAxis = -1;
+        int  instIdx = -1;
+        int  instAxis = -1;
         uint instVoxel = 0;
 
         if (instanceBVHReady)
@@ -748,22 +771,34 @@ void Scene::FindNearest(Ray& ray) const
             {
                 const VoxelInstance& inst = voxelInstances[i];
                 if (inst.matricesDirty) continue;
-                if (inst.modelIndex < 0 || inst.modelIndex >= (int)voxelObjects.size()) continue;
+                if (inst.modelIndex < 0 ||
+                    inst.modelIndex >= (int)voxelObjects.size()) continue;
+
                 float tEntry, tExit;
-                if (!RayAABB(ray.O, ray.rD, inst.worldAABBmin, inst.worldAABBmax, tEntry, tExit)) continue;
+                if (!RayAABB(ray.O, ray.rD,
+                    inst.worldAABBmin, inst.worldAABBmax,
+                    tEntry, tExit)) continue;
                 if (tEntry >= bestT) continue;
+
                 const float3 localO = inst.worldToLocal.TransformPoint(ray.O);
                 const float3 localD = inst.worldToLocal.TransformVector(ray.D);
+
                 int hitFace; uint8_t hitVoxel;
                 float t = TraceObjectDDA(localO, localD,
                     voxelObjects[inst.modelIndex], bestT, hitFace, hitVoxel);
-                if (t < bestT) { bestT = t; instIdx = i; instAxis = hitFace; instVoxel = hitVoxel; }
+                if (t < bestT)
+                {
+                    bestT = t;
+                    instIdx = i;
+                    instAxis = hitFace;
+                    instVoxel = hitVoxel;
+                }
             }
         }
 
         if (instIdx >= 0)
         {
-            bestMatIdx = instVoxel;
+            bestMatIdx = instVoxel;   // raw palette index — GetMat offsets it
             bestAxis = instAxis;
             bestSphereIdx = -1;
             bestInstanceIdx = instIdx;
@@ -780,9 +815,9 @@ void Scene::FindNearest(Ray& ray) const
     ray.voxel = bestVoxel;
 }
 
-
 bool Scene::IsOccluded(Ray& ray) const
 {
+    // World-grid occlusion
     if (voxelGridActive)
     {
         uint dummyMat = 0;
@@ -790,5 +825,39 @@ bool Scene::IsOccluded(Ray& ray) const
         if (TraverseDDA<true>(ray, 0.f, dummyMat, dummyAxis))
             return true;
     }
+
+    // Instanced voxel objects occlusion — respect the shadow flag
+    if (instancesShadows && !voxelInstances.empty())
+    {
+        if (instanceBVHReady)
+        {
+            if (TraceInstanceBVHOcclusion(ray))
+                return true;
+        }
+        else
+        {
+            for (int i = 0; i < (int)voxelInstances.size(); i++)
+            {
+                const VoxelInstance& inst = voxelInstances[i];
+                if (inst.matricesDirty) continue;
+                if (inst.modelIndex < 0 ||
+                    inst.modelIndex >= (int)voxelObjects.size()) continue;
+
+                float tEntry, tExit;
+                if (!RayAABB(ray.O, ray.rD,
+                    inst.worldAABBmin, inst.worldAABBmax,
+                    tEntry, tExit)) continue;
+                if (tEntry >= ray.t) continue;
+
+                const float3 localO = inst.worldToLocal.TransformPoint(ray.O);
+                const float3 localD = inst.worldToLocal.TransformVector(ray.D);
+
+                if (TraceObjectDDAOcclusion(localO, localD,
+                    voxelObjects[inst.modelIndex], ray.t))
+                    return true;
+            }
+        }
+    }
+
     return false;
 }
