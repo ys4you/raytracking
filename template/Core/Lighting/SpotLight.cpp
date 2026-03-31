@@ -21,15 +21,12 @@ float3 SpotLight::Illuminate(const ShadingPoint& sp, Scene& scene) const
 
     float3 L = normalize(toPoint);
 
-    // Shadow test
     Ray shadowRay(sp.position + sp.normal * EPS, -L);
     if (scene.IsOccluded(shadowRay))
         return float3(0);
 
-    // Distance attenuation
     float attenuation = 1.0f - distance / range;
 
-    // Spotlight cone with proportional roughness
     float outerAngle = spotAngleDeg;
     float innerAngle = spotAngleDeg * (1.0f - edgeRoughness);
 
@@ -44,7 +41,7 @@ float3 SpotLight::Illuminate(const ShadingPoint& sp, Scene& scene) const
     float spotIntensity =
         clamp((spotFactor - cosOuter) / (cosInner - cosOuter), 0.0f, 1.0f);
 
-    const float ndotl = max(0.0f, dot(sp.normal, -L));  // Note: -L because L points from light to surface
+    const float ndotl = max(0.0f, dot(sp.normal, -L));
     return color * sp.albedo * ndotl * attenuation * spotIntensity;
 }
 

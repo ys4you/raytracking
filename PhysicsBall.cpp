@@ -3,28 +3,23 @@
 
 using namespace Tmpl8;
 
-// ─── Static data ─────────────────────────────────────────────────────────────
 
 const float3 PhysicsBall::GRAVITY = float3(0, -0.5f, 0);
 
-static constexpr float S = 0.70710678f; // 1/sqrt(2)
-static constexpr float T = 0.57735027f; // 1/sqrt(3)
+static constexpr float S = 0.70710678f;
+static constexpr float T = 0.57735027f;
 
 const float3 PhysicsBall::s_probeDirections[PROBE_COUNT] = {
-	// 6 cardinal axes
 	float3(1, 0, 0), float3(-1, 0, 0),
 	float3(0, 1, 0), float3(0, -1, 0),
 	float3(0, 0, 1), float3(0, 0, -1),
-	// 12 edge midpoints
 	float3(S, S, 0), float3(S, -S, 0), float3(-S, S, 0), float3(-S, -S, 0),
 	float3(S, 0, S), float3(S, 0, -S), float3(-S, 0, S), float3(-S, 0, -S),
 	float3(0, S, S), float3(0, S, -S), float3(0, -S, S), float3(0, -S, -S),
-	// 8 corner diagonals
 	float3(T, T, T), float3(T, T, -T), float3(T, -T, T), float3(T, -T, -T),
 	float3(-T, T, T), float3(-T, T, -T), float3(-T, -T, T), float3(-T, -T, -T),
 };
 
-// ─── Construction ────────────────────────────────────────────────────────────
 
 PhysicsBall::PhysicsBall(float3 pos, float r, float m)
 	: position(pos), radius(r), mass(m)
@@ -32,9 +27,6 @@ PhysicsBall::PhysicsBall(float3 pos, float r, float m)
 	rotationMat = mat4::Identity();
 }
 
-// ─── Probe terrain contact ───────────────────────────────────────────────────
-// Only reacts to VOXEL hits (ray.voxel > 0).  Sphere hits (axis == 3) are
-// ignored — sphere-sphere is handled separately by ResolvePair.
 
 float PhysicsBall::ProbeTerrainContact(Scene& scene, float3& outNormal) const
 {
@@ -48,7 +40,6 @@ float PhysicsBall::ProbeTerrainContact(Scene& scene, float3& outNormal) const
 		Ray probe(position, dir, probeLen);
 		scene.FindNearest(probe);
 
-		// Only voxel hits count — ignore spheres and misses
 		if (probe.voxel == 0) continue;
 		if (probe.t >= radius) continue;
 
@@ -56,12 +47,11 @@ float PhysicsBall::ProbeTerrainContact(Scene& scene, float3& outNormal) const
 		if (penetration > maxPenetration)
 			maxPenetration = penetration;
 
-		// Face normal from DDA axis
 		float3 hitNormal;
 		if (probe.axis == 0)      hitNormal = float3(probe.D.x < 0 ? 1.f : -1.f, 0, 0);
 		else if (probe.axis == 1) hitNormal = float3(0, probe.D.y < 0 ? 1.f : -1.f, 0);
 		else if (probe.axis == 2) hitNormal = float3(0, 0, probe.D.z < 0 ? 1.f : -1.f);
-		else                        continue; // shouldn't happen, but safety
+		else                        continue;
 
 		outNormal += hitNormal * penetration;
 	}
@@ -75,8 +65,6 @@ float PhysicsBall::ProbeTerrainContact(Scene& scene, float3& outNormal) const
 	return maxPenetration;
 }
 
-// ─── CCD sweep test ──────────────────────────────────────────────────────────
-// Only blocks on VOXEL hits.  Sphere hits are ignored.
 
 float PhysicsBall::SweepTest(Scene& scene, float dt) const
 {
@@ -89,14 +77,12 @@ float PhysicsBall::SweepTest(Scene& scene, float dt) const
 	Ray ccd(position, dir, travelDist + radius);
 	scene.FindNearest(ccd);
 
-	// Only voxel hits block movement
 	if (ccd.voxel == 0) return travelDist;
 
 	float safe = ccd.t - radius;
 	return max(0.0f, safe);
 }
 
-// ─── Depenetration ───────────────────────────────────────────────────────────
 
 void PhysicsBall::Depenetrate(float penetration, const float3& normal)
 {
@@ -104,7 +90,6 @@ void PhysicsBall::Depenetrate(float penetration, const float3& normal)
 		position += normal * (penetration + 0.0001f);
 }
 
-// ─── Integrate rotation ──────────────────────────────────────────────────────
 
 void PhysicsBall::IntegrateRotation(float dt)
 {
@@ -136,14 +121,11 @@ void PhysicsBall::IntegrateRotation(float dt)
 	rotationMat = rot * rotationMat;
 }
 
-// ─── Main update ─────────────────────────────────────────────────────────────
 
 void PhysicsBall::Update(float dt, Scene& scene)
 {
-	// 1. Gravity
 	velocity += GRAVITY * dt;
 
-	// 2. CCD: check for tunneling
 	float safeDist = SweepTest(scene, dt);
 	float speed = length(velocity);
 	float fullDist = speed * dt;
@@ -153,11 +135,10 @@ void PhysicsBall::Update(float dt, Scene& scene)
 		float3 dir = velocity * (1.0f / speed);
 		position += dir * safeDist;
 
-		// Re-cast to get the normal at contact
 		Ray ccd(position, dir, radius * 2.0f);
 		scene.FindNearest(ccd);
 
-		float3 hitN(0, 1, 0); // default up
+		float3 hitN(0, 1, 0);
 		if (ccd.voxel > 0)
 		{
 			if (ccd.axis == 0)      hitN = float3(dir.x < 0 ? 1.f : -1.f, 0, 0);
@@ -171,11 +152,9 @@ void PhysicsBall::Update(float dt, Scene& scene)
 	}
 	else
 	{
-		// 3. Normal integration (semi-implicit Euler)
 		position += velocity * dt;
 	}
 
-	// 4. Probe terrain
 	float3 contactNormal;
 	float penetration = ProbeTerrainContact(scene, contactNormal);
 
@@ -189,13 +168,11 @@ void PhysicsBall::Update(float dt, Scene& scene)
 		{
 			if (fabsf(vn) < 0.01f)
 			{
-				// Micro-bounce kill
 				velocity -= vn * contactNormal;
 				onGround = true;
 			}
 			else
 			{
-				// Bounce
 				velocity -= (1.0f + restitution) * vn * contactNormal;
 				onGround = false;
 			}
@@ -205,7 +182,6 @@ void PhysicsBall::Update(float dt, Scene& scene)
 			onGround = true;
 		}
 
-		// 5. Rolling friction
 		if (onGround)
 		{
 			float3 vTangent = velocity - dot(velocity, contactNormal) * contactNormal;
@@ -219,7 +195,6 @@ void PhysicsBall::Update(float dt, Scene& scene)
 					+ dot(velocity, contactNormal) * contactNormal;
 			}
 
-			// 6. Slope force
 			float3 gravParallel = GRAVITY - dot(GRAVITY, contactNormal) * contactNormal;
 			velocity += gravParallel * dt;
 		}
@@ -230,7 +205,6 @@ void PhysicsBall::Update(float dt, Scene& scene)
 		velocity -= velocity * airDrag * dt;
 	}
 
-	// 7. World bounds clamp [radius, 1-radius]
 	float lo = radius + 0.001f;
 	float hi = 1.0f - radius - 0.001f;
 	for (int a = 0; a < 3; a++)
@@ -241,7 +215,6 @@ void PhysicsBall::Update(float dt, Scene& scene)
 		if (p > hi) { p = hi; if (v > 0) v *= -restitution; }
 	}
 
-	// 8. Angular velocity from rolling
 	if (onGround)
 	{
 		float3 vTangent = velocity - dot(velocity, contactNormal) * contactNormal;
@@ -250,13 +223,11 @@ void PhysicsBall::Update(float dt, Scene& scene)
 
 	IntegrateRotation(dt);
 
-	// 9. Max speed clamp
 	float maxSpeed = 0.5f * (1.0f / 256.0f) * 120.0f;
 	if (length(velocity) > maxSpeed)
 		velocity = normalize(velocity) * maxSpeed;
 }
 
-// ─── Sphere-sphere collision ─────────────────────────────────────────────────
 
 void PhysicsBall::ResolvePair(PhysicsBall& a, PhysicsBall& b)
 {

@@ -1,15 +1,3 @@
-// ============================================================
-// LivingCubeScene.h — 3D Conway's Game of Life
-// ============================================================
-// Uses 4 colored 1×1×1 voxel cubes instanced per alive cell.
-// Color encodes each cell's predicted fate:
-//   Muted Teal    — stable (will survive)
-//   Soft Yellow   — newly born this generation
-//   Coral Pink    — dying from underpopulation
-//   Pale Lavender — dying from overpopulation
-//
-// Colors reference Splatoon 3: Side Order palette.
-// ============================================================
 
 #pragma once
 #include "SceneManager.h"
@@ -22,23 +10,20 @@
 namespace GameScenes
 {
 
-	// ── Cell visual state ─────────────────────────────────────────
 	enum CellVis : uint8_t
 	{
-		VIS_STABLE = 0,  // will survive next gen
-		VIS_BORN = 1,  // just born this gen
-		VIS_DYING_UNDER = 2,  // will die — underpopulation
-		VIS_DYING_OVER = 3   // will die — overpopulation
+		VIS_STABLE = 0,
+		VIS_BORN = 1,
+		VIS_DYING_UNDER = 2,
+		VIS_DYING_OVER = 3
 	};
 
-	// Palette indices (high range to avoid conflicts with .vox palettes)
 	static constexpr uint8_t PAL_STABLE = 250;
 	static constexpr uint8_t PAL_BORN = 251;
 	static constexpr uint8_t PAL_DYING_UNDER = 252;
 	static constexpr uint8_t PAL_DYING_OVER = 253;
 
 
-	// ── Automaton state ───────────────────────────────────────────
 	struct LifeState
 	{
 		static constexpr int   MAX_DIM = 8;
@@ -50,24 +35,19 @@ namespace GameScenes
 		CellVis cellVis[MAX_DIM][MAX_DIM][MAX_DIM] = {};
 		int     generation = 0;
 
-		// Rules — default: "Coral" 4-6/5-6
 		int surviveMin = 4, surviveMax = 6;
 		int birthMin = 5, birthMax = 6;
 
-		// Timing
 		float stepInterval = 0.2f;
 		float timer = 0.0f;
 		bool  paused = false;
 		bool  needsInitialSync = true;
 
-		// Visual
 		float cubeSpacing = 1.2f;
 
-		// Rotation
 		float angleX = 0.0f, angleY = 0.0f, angleZ = 0.0f;
 		float speedX = 0.12f, speedY = 0.25f, speedZ = 0.08f;
 
-		// Object indices — set on first tick by SetupColoredCubes
 		int objBase = 0;
 
 		void TickRotation(float deltaTimeMs)
@@ -83,7 +63,6 @@ namespace GameScenes
 
 		float3 GetRotation() const { return float3(angleX, angleY, angleZ); }
 
-		// Presets
 		enum Preset { P_CORAL, P_GROWTH, P_SPRAWL, P_CUSTOM, P_COUNT };
 		int preset = P_CORAL;
 
@@ -138,7 +117,6 @@ namespace GameScenes
 
 		void Step()
 		{
-			// 1. Compute next generation in buffer
 			for (int x = 0; x < dim; x++)
 				for (int y = 0; y < dim; y++)
 					for (int z = 0; z < dim; z++)
@@ -150,7 +128,6 @@ namespace GameScenes
 							buffer[x][y][z] = (nb >= birthMin && nb <= birthMax);
 					}
 
-			// 2. Tag born cells (was dead, now alive)
 			for (int x = 0; x < dim; x++)
 				for (int y = 0; y < dim; y++)
 					for (int z = 0; z < dim; z++)
@@ -161,12 +138,9 @@ namespace GameScenes
 							: VIS_STABLE;
 					}
 
-			// 3. Apply new generation
 			memcpy(cells, buffer, sizeof(cells));
 			generation++;
 
-			// 4. Predict fate for surviving cells
-			//    (born cells keep their yellow color for one generation)
 			for (int x = 0; x < dim; x++)
 				for (int y = 0; y < dim; y++)
 					for (int z = 0; z < dim; z++)
@@ -184,7 +158,6 @@ namespace GameScenes
 					}
 		}
 
-		// Classify all alive cells by predicted fate (used after seed/reseed)
 		void ClassifyFates()
 		{
 			for (int x = 0; x < dim; x++)
@@ -215,23 +188,15 @@ namespace GameScenes
 	};
 
 
-	// ── Create colored VoxelObjects and set up materials ──────────
 
 	inline void SetupColoredCubes(Tmpl8::Scene& scene, LifeState& life)
 	{
 		life.objBase = (int)scene.voxelObjects.size();
 
-		// Side Order palette (desaturated pastels)
-		//   Muted Teal    #8CB8B0  — stable
-		//   Soft Yellow   #D8D0A0  — born
-		//   Coral Pink    #E8A0A0  — dying underpopulation
-		//   Pale Lavender #C8B8D8  — dying overpopulation
 		const uint8_t pals[] = { PAL_STABLE, PAL_BORN, PAL_DYING_UNDER, PAL_DYING_OVER };
 		for (int i = 0; i < 4; i++)
 			scene.voxelObjects.push_back(VoxelObject(1, 1, 1, { pals[i] }));
 
-		// Register materials for those palette indices
-		// GetMat(v) → materials[MAT_COUNT + (v - 1)]
 		auto makeMat = [](float3 color) -> Material
 			{
 				Material m;
@@ -243,14 +208,13 @@ namespace GameScenes
 				return m;
 			};
 
-		scene.materials[MAT_COUNT + (PAL_STABLE - 1)] = makeMat(float3(0.549f, 0.722f, 0.690f)); // Muted Teal #8CB8B0
-		scene.materials[MAT_COUNT + (PAL_BORN - 1)] = makeMat(float3(0.847f, 0.816f, 0.627f)); // Soft Yellow #D8D0A0
-		scene.materials[MAT_COUNT + (PAL_DYING_UNDER - 1)] = makeMat(float3(0.910f, 0.627f, 0.627f)); // Coral Pink  #E8A0A0
-		scene.materials[MAT_COUNT + (PAL_DYING_OVER - 1)] = makeMat(float3(0.784f, 0.722f, 0.847f)); // Pale Lavender #C8B8D8
+		scene.materials[MAT_COUNT + (PAL_STABLE - 1)] = makeMat(float3(0.549f, 0.722f, 0.690f));
+		scene.materials[MAT_COUNT + (PAL_BORN - 1)] = makeMat(float3(0.847f, 0.816f, 0.627f));
+		scene.materials[MAT_COUNT + (PAL_DYING_UNDER - 1)] = makeMat(float3(0.910f, 0.627f, 0.627f));
+		scene.materials[MAT_COUNT + (PAL_DYING_OVER - 1)] = makeMat(float3(0.784f, 0.722f, 0.847f));
 	}
 
 
-	// ── Sync alive cells → voxel instances ────────────────────────
 
 	inline void SyncInstances(
 		const LifeState& life,
@@ -285,7 +249,6 @@ namespace GameScenes
 					float4 rotated = rot * float4(offset, 1.0f);
 					float3 pos = float3(rotated.x, rotated.y, rotated.z) + center;
 
-					// Pick colored object based on cell fate
 					int objIdx = life.objBase + (int)life.cellVis[x][y][z];
 
 					VoxelFactory::CreateInstance(
@@ -299,17 +262,12 @@ namespace GameScenes
 	}
 
 
-	// ============================================================
-	// Scene definition
-	// ============================================================
 
 	inline SceneDef LivingCubeShowcase()
 	{
 		SceneDef s;
 		s.name = "Living Cube";
 
-		// ── Objects ───────────────────────────────────────────────
-		// Display platform — flattened into world grid
 		s.voxObjects.push_back({
 			"assets/Showcase/display_platform.vox",
 			float3(256, 120, 256),
@@ -317,20 +275,16 @@ namespace GameScenes
 			float3(1, 1, 1), true
 			});
 
-		// Colored cubes created programmatically in first tick
 
-		// ── Camera ────────────────────────────────────────────────
 		s.camPos = float3(0.5f, 0.47f, -0.28f);
 		s.camTarget = float3(0.5f, 0.45f, 0.5f);
 
-		// ── Sky ───────────────────────────────────────────────────
 		s.sky.sunDir = normalize(float3(0.2f, -0.5f, 0.3f));
 		s.sky.sunColor = float3(1.0f, 0.85f, 0.8f);
 		s.sky.sunIntensity = 0.6f;
 		s.sky.timeOfDay = 0.3f;
 		s.sky.animate = false;
 
-		// ── Lights ─────────────────────────────────────────────────
 		auto addLight = [&](float3 pos, float3 col)
 			{
 				PointLight l;
@@ -339,18 +293,17 @@ namespace GameScenes
 				l.enabled = true;
 				s.pointLights.push_back(l);
 			};
-		addLight(float3(0.5f, 0.85f, 0.5f), float3(0.9f, 0.88f, 0.85f));   // overhead
-		addLight(float3(0.5f, 0.45f, 0.1f), float3(0.5f, 0.48f, 0.45f));   // front
-		addLight(float3(0.1f, 0.5f, 0.5f), float3(0.2f, 0.25f, 0.23f));   // left fill
-		addLight(float3(0.9f, 0.5f, 0.5f), float3(0.22f, 0.2f, 0.25f));   // right fill
-		addLight(float3(0.5f, 0.15f, 0.5f), float3(0.12f, 0.11f, 0.10f));  // below
-		addLight(float3(0.5f, 0.5f, 0.9f), float3(0.15f, 0.18f, 0.22f));  // behind
+		addLight(float3(0.5f, 0.85f, 0.5f), float3(0.9f, 0.88f, 0.85f));
+		addLight(float3(0.5f, 0.45f, 0.1f), float3(0.5f, 0.48f, 0.45f));
+		addLight(float3(0.1f, 0.5f, 0.5f), float3(0.2f, 0.25f, 0.23f));
+		addLight(float3(0.9f, 0.5f, 0.5f), float3(0.22f, 0.2f, 0.25f));
+		addLight(float3(0.5f, 0.15f, 0.5f), float3(0.12f, 0.11f, 0.10f));
+		addLight(float3(0.5f, 0.5f, 0.9f), float3(0.15f, 0.18f, 0.22f));
 
 		auto life = std::make_shared<LifeState>();
 		life->ApplyPreset();
 		life->SeedRandom(0.35f);
 
-		// ── Tick ──────────────────────────────────────────────────
 		s.tickCallback = [life](SceneDef& def, Tmpl8::Scene& scene,
 			float deltaTime, std::function<void()> resetAcc)
 			{
@@ -379,7 +332,6 @@ namespace GameScenes
 				if (resetAcc) resetAcc();
 			};
 
-		// ── UI ────────────────────────────────────────────────────
 		s.uiCallback = [life](SceneDef& def, Tmpl8::Scene& scene,
 			std::function<void()> resetAcc)
 			{
@@ -394,7 +346,6 @@ namespace GameScenes
 
 				ImGui::Spacing();
 
-				// ── Color legend ──────────────────────────────────
 				auto colorDot = [](float3 c, const char* label)
 					{
 						ImGui::ColorButton(label,
@@ -414,7 +365,6 @@ namespace GameScenes
 
 				ImGui::Spacing();
 
-				// ── Controls ──────────────────────────────────────
 				if (ImGui::Button(life->paused ? "  Play  " : "  Pause "))
 					life->paused = !life->paused;
 				ImGui::SameLine();
@@ -505,4 +455,4 @@ namespace GameScenes
 		return s;
 	}
 
-} // namespace GameScenes
+}

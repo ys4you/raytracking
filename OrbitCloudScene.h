@@ -1,16 +1,3 @@
-// ============================================================
-// OrbitCloudScene.h — Sterile Choreography Edition
-// ============================================================
-// A hypnotic kinetic sculpture:
-// - Smooth orbit drift
-// - Gentle height oscillation
-// - Soft global breathing
-// - Subtle beat flashes (not strong pulses)
-// - Occasional micro-alignment moments
-//
-// Designed to be visually appealing for any duration.
-// Side Order palette, clinical lighting.
-// ============================================================
 
 #pragma once
 #include "SceneManager.h"
@@ -24,9 +11,9 @@
 namespace GameScenes
 {
 
-    static constexpr uint8_t PAL_OC_MISS = 238;  // Near White
-    static constexpr uint8_t PAL_OC_HIT = 239;  // Muted Teal
-    static constexpr uint8_t PAL_OC_FLASH = 240;  // Emissive
+    static constexpr uint8_t PAL_OC_MISS = 238;
+    static constexpr uint8_t PAL_OC_HIT = 239;
+    static constexpr uint8_t PAL_OC_FLASH = 240;
 
     static constexpr float OC_BPM = 79.0f;
     static constexpr float OC_BEAT = 60.0f / OC_BPM;
@@ -35,9 +22,6 @@ namespace GameScenes
     static constexpr int OC_COUNT = 24;
 
 
-    // ------------------------------------------------------------
-    // Cube data
-    // ------------------------------------------------------------
     struct OrbitCube
     {
         float orbitRadius;
@@ -47,15 +31,11 @@ namespace GameScenes
         float cubeSize;
         bool  isHit;
 
-        // Smooth choreography additions
         float baseHeight;
         float heightOscPhase;
     };
 
 
-    // ------------------------------------------------------------
-    // Scene state
-    // ------------------------------------------------------------
     struct OrbitCloudState
     {
         OrbitCube cubes[OC_COUNT] = {};
@@ -65,14 +45,11 @@ namespace GameScenes
         float beatPhase = 0.0f;
         bool  inFlash = false;
 
-        // Smooth global breathing
         float globalBreath = 0.0f;
 
-        // Group rotation
         float angleX = 0, angleY = 0, angleZ = 0;
         float speedX = 0.06f, speedY = 0.12f, speedZ = 0.04f;
 
-        // Ray simulation
         float rayTimer = 0.0f;
         float stepInterval = 0.25f;
         int   stepCount = 0;
@@ -82,9 +59,6 @@ namespace GameScenes
         bool  needsInit = true;
 
 
-        // ------------------------------------------------------------
-        // Seed initial cube data
-        // ------------------------------------------------------------
         void Seed()
         {
             for (int i = 0; i < OC_COUNT; i++)
@@ -109,9 +83,6 @@ namespace GameScenes
         }
 
 
-        // ------------------------------------------------------------
-        // Ray simulation (kept subtle)
-        // ------------------------------------------------------------
         void SimulateRay()
         {
             float theta = (rand() % 628) * 0.01f;
@@ -140,9 +111,6 @@ namespace GameScenes
         }
 
 
-        // ------------------------------------------------------------
-        // Smooth rotation
-        // ------------------------------------------------------------
         void TickRotation(float dtMs)
         {
             float dt = dtMs * 0.001f;
@@ -156,33 +124,25 @@ namespace GameScenes
         }
 
 
-        // ------------------------------------------------------------
-        // Main tick — smooth choreography
-        // ------------------------------------------------------------
         void Tick(float dtMs)
         {
             if (paused) return;
             float dt = dtMs * 0.001f;
 
-            // Continuous orbit drift
             for (int i = 0; i < OC_COUNT; i++)
             {
                 OrbitCube& c = cubes[i];
                 c.orbitPhase += c.orbitSpeed * dt;
 
-                // Smooth height oscillation
                 c.heightOscPhase += dt * 0.6f;
                 c.heightOffset = c.baseHeight + sinf(c.heightOscPhase) * 2.0f;
             }
 
-            // Global breathing (very subtle)
             globalBreath = 1.0f + 0.03f * sinf(beatTimer * 0.8f);
 
-            // Beat tracking
             beatTimer += dt;
             beatPhase = fmodf(beatTimer / OC_BEAT, 1.0f);
 
-            // Soft flash on beat
             int currentBeat = (int)(beatTimer / OC_BEAT);
             if (currentBeat > beatCount)
             {
@@ -196,7 +156,6 @@ namespace GameScenes
                     inFlash = false;
             }
 
-            // Ray simulation (slow)
             rayTimer += dt;
             if (rayTimer >= stepInterval)
             {
@@ -222,9 +181,6 @@ namespace GameScenes
     };
 
 
-    // ------------------------------------------------------------
-    // Singleton accessor
-    // ------------------------------------------------------------
     inline std::shared_ptr<OrbitCloudState>& GetOrbitCloudState()
     {
         static std::shared_ptr<OrbitCloudState> inst;
@@ -232,9 +188,6 @@ namespace GameScenes
     }
 
 
-    // ------------------------------------------------------------
-    // Setup voxel objects + materials
-    // ------------------------------------------------------------
     inline void SetupOrbitCloudCubes(Tmpl8::Scene& scene, OrbitCloudState& oc)
     {
         oc.objBase = (int)scene.voxelObjects.size();
@@ -265,9 +218,6 @@ namespace GameScenes
     }
 
 
-    // ------------------------------------------------------------
-    // Sync — smooth choreography rendering
-    // ------------------------------------------------------------
     inline void SyncOrbitCloud(
         const OrbitCloudState& oc,
         Tmpl8::Scene& scene,
@@ -330,9 +280,6 @@ namespace GameScenes
     }
 
 
-    // ------------------------------------------------------------
-    // Scene definition
-    // ------------------------------------------------------------
     inline SceneDef OrbitCloudShowcase()
     {
         SceneDef s;
@@ -359,7 +306,6 @@ namespace GameScenes
             float3(0.25f, 0.60f, 0.22f),
         };
 
-        // Clinical lighting
         s.sky.sunDir = normalize(float3(0.3f, -0.5f, 0.2f));
         s.sky.sunColor = float3(1.0f, 0.98f, 0.95f);
         s.sky.sunIntensity = 2.0f;
@@ -451,4 +397,4 @@ namespace GameScenes
         return s;
     }
 
-} // namespace GameScenes
+}

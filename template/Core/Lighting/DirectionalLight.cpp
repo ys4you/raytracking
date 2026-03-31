@@ -12,7 +12,6 @@ float3 DirectionalLight::Illuminate(const ShadingPoint& sp, Scene& scene) const
 {
     const float3 Ldir = normalize(-direction);
 
-    //voxel-based epsilon - Claude
     const float voxelSize = 1.0f / 128.0f;
     const float EPS = voxelSize * .5f;
 

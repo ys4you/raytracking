@@ -25,20 +25,24 @@ namespace Tmpl8
 	class Renderer : public TheApp
 	{
 	public:
+		/// <summary>Returns squared vector length.</summary>
 		inline float length2(const float3& v)
 		{
 			return v.x * v.x + v.y * v.y + v.z * v.z;
 		}
+		/// <summary>Samples a random point inside the unit sphere.</summary>
 		inline float3 RandomInUnitSphere()
 		{
 			float3 p;
 			do { p = 2.0f * float3(RandomFloat(), RandomFloat(), RandomFloat()) - float3(1, 1, 1); } while (length2(p) >= 1.0f);
 			return p;
 		}
+		/// <summary>Reflects a vector around a surface normal.</summary>
 		inline float3 reflect(const float3& v, const float3& n)
 		{
 			return v - 2.0f * dot(v, n) * n;
 		}
+		/// <summary>Computes a refracted direction using Snell's law.</summary>
 		inline bool Refract(const float3& v, const float3& n, float ni_over_nt, float3& refracted)
 		{
 			float3 uv = normalize(v);
@@ -50,12 +54,14 @@ namespace Tmpl8
 			}
 			return false;
 		}
+		/// <summary>Approximates Fresnel reflectance with Schlick's model.</summary>
 		inline float Schlick(float cosine, float ref_idx)
 		{
 			float r0 = (1 - ref_idx) / (1 + ref_idx);
 			r0 = r0 * r0;
 			return r0 + (1 - r0) * powf(1 - cosine, 5);
 		}
+		/// <summary>Returns a blue-noise sample for pixel and frame indices.</summary>
 		float BlueNoise(int x, int y, int frame)
 		{
 			int ix = (x + frame * 17) & (BN_SIZE - 1);
@@ -69,15 +75,24 @@ namespace Tmpl8
 		float fps = 0.0f;
 		float rps = 0.0f;
 
+		/// <summary>Initializes renderer state and resources.</summary>
 		void Init();
+		/// <summary>Traces a ray and returns the shaded radiance.</summary>
 		float3 Trace(Ray& ray, int = 0, int = 0, int = 0);
+		/// <summary>Advances one frame of rendering and simulation.</summary>
 		void Tick(float deltaTime);
+		/// <summary>Draws frame statistics user interface.</summary>
 		void UIStats();
+		/// <summary>Draws main renderer user interface.</summary>
 		void UI();
+		/// <summary>Draws lighting controls user interface.</summary>
 		void LightUI() const;
+		/// <summary>Draws material controls and returns whether values changed.</summary>
 		static bool MaterialUI(const char* label, Material& material);
+		/// <summary>Releases renderer-owned resources.</summary>
 		void Shutdown();
 		void MouseUp(int button) { button = 0; }
+		/// <summary>Handles mouse press events.</summary>
 		void MouseDown(int button);
 		void MouseMove(int x, int y)
 		{
@@ -89,6 +104,7 @@ namespace Tmpl8
 		}
 		void MouseWheel(float y) { y = 0; }
 		void KeyUp(int key) { key = 0; }
+		/// <summary>Handles key press events.</summary>
 		void KeyDown(int key);
 
 		int2 mousePos;
@@ -113,7 +129,9 @@ namespace Tmpl8
 		uint32_t frameIndex = 0;
 		mat4 lastViewMatrix;
 
+		/// <summary>Allocates accumulation buffers for progressive rendering.</summary>
 		void InitAccumulator();
+		/// <summary>Resets progressive accumulation state.</summary>
 		void ResetAccumulator();
 
 		int selectedMaterialIndex = -1;
@@ -134,7 +152,6 @@ namespace Tmpl8
 
 		EventSystem eventSystem;
 
-		// ── Bloom post-process (quarter-resolution) ──────────────
 		float3* bloomDown = nullptr;
 		float3* bloomTemp = nullptr;
 		static constexpr int BLOOM_W = SCRWIDTH / 4;
@@ -143,23 +160,22 @@ namespace Tmpl8
 		float  bloomThreshold = 1.0f;
 		float  bloomIntensity = 0.35f;
 		int    bloomRadius = 6;
+		/// <summary>Applies bloom post-processing to the render output.</summary>
 		void   ApplyBloom() const;
 
-		// ── Screen fade ──────────────────────────────────────────
-		float  fadeOpacity = 1.0f;    // 0 = visible, 1 = fully faded
-		float  fadeTarget = 0.0f;     // target opacity
-		float  fadeSpeed = 1.0f;      // 1/duration
+		float  fadeOpacity = 1.0f;
+		float  fadeTarget = 0.0f;
+		float  fadeSpeed = 1.0f;
 		float3 fadeColor = float3(0, 0, 0);
 
-		// ── Light fade ───────────────────────────────────────────
 		bool  lightFadeActive = false;
 		float lightFadeTimer = 0.0f;
 		float lightFadeDuration = 2.0f;
 		float lightFadeFrom = 0.0f;
 		float lightFadeTo = 1.0f;
-		float lightFadeMult = 1.0f;   // starts dark aat .0f
+		float lightFadeMult = 1.0f;
 
 		std::vector<float3> originalPointLightColors;
 		bool lightColorsStored = false;
 	};
-} // namespace Tmpl8
+}

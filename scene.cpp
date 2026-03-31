@@ -19,9 +19,6 @@ static void SphereAABB(uint32_t idx, tinybvh::bvhvec3& mn, tinybvh::bvhvec3& mx)
     mx = { s.center.x + s.radius, s.center.y + s.radius, s.center.z + s.radius };
 }
 
-// ============================================================================
-//  Sphere traversal (unchanged from your original)
-// ============================================================================
 
 void Scene::TraceSphereBVH(tinybvh::Ray& ray) const
 {
@@ -144,9 +141,6 @@ void Scene::TraceSphereGrid(Ray& ray, float& nearestT, int& nearestIdx) const
 }
 
 
-// ============================================================================
-//  World-grid helpers (unchanged)
-// ============================================================================
 
 __forceinline static float intersect_cube(Ray& ray)
 {
@@ -168,9 +162,6 @@ __forceinline static bool point_in_cube(const float3& pos)
 }
 
 
-// ============================================================================
-//  Voxel grid accessors (unchanged)
-// ============================================================================
 
 uint Scene::GetVoxel(uint x, uint y, uint z) const
 {
@@ -193,9 +184,6 @@ uint Scene::AllocateBrick()
 }
 
 
-// ============================================================================
-//  Scene constructor (unchanged)
-// ============================================================================
 
 Scene::Scene()
 {
@@ -235,9 +223,6 @@ Scene::Scene()
 }
 
 
-// ============================================================================
-//  Set / SetVoxel / BuildSphereBVH (unchanged)
-// ============================================================================
 
 void Scene::Set(uint x, uint y, uint z, uint v)
 {
@@ -295,9 +280,6 @@ void Scene::BuildInstanceBVH()
 }
 
 
-// ============================================================================
-//  Instance management
-// ============================================================================
 
 void Scene::RebuildDirtyInstances()
 {
@@ -315,9 +297,6 @@ void Scene::RebuildDirtyInstances()
 }
 
 
-// ============================================================================
-//  World-grid DDA (unchanged)
-// ============================================================================
 
 __forceinline bool Scene::Setup3DDDA(Ray& ray, DDAState& state) const
 {
@@ -364,12 +343,12 @@ __forceinline bool Scene::TraverseDDA(
         if constexpr (IsOcclusionRay) { if (s.t >= ray.t) return false; }
         if (s.X >= (uint)WORLDSIZE || s.Y >= (uint)WORLDSIZE || s.Z >= (uint)WORLDSIZE) break;
 
-        // Coarse empty-brick skip
         {
             const uint cx = s.X >> BRICK_SHIFT, cy = s.Y >> BRICK_SHIFT, cz = s.Z >> BRICK_SHIFT;
             const uint coarseIdx = cx + cy * COARSE_SIZE + cz * COARSE_SIZE2;
             if (!IsOccupied(coarseIdx))
             {
+                // Skip the remainder of the current coarse brick in one step.
                 const int remX = (s.step.x > 0) ? (int)(BRICK_SIZE - (s.X & (BRICK_SIZE - 1))) : (int)((s.X & (BRICK_SIZE - 1)) + 1);
                 const int remY = (s.step.y > 0) ? (int)(BRICK_SIZE - (s.Y & (BRICK_SIZE - 1))) : (int)((s.Y & (BRICK_SIZE - 1)) + 1);
                 const int remZ = (s.step.z > 0) ? (int)(BRICK_SIZE - (s.Z & (BRICK_SIZE - 1))) : (int)((s.Z & (BRICK_SIZE - 1)) + 1);
@@ -398,6 +377,7 @@ __forceinline bool Scene::TraverseDDA(
             if ((startedInside && cell == 0) || (!startedInside && cell != 0))
             {
                 if (startedInside) {
+                    // Inside-out case: use the previous voxel cell as the material source.
                     const int hx = (int)s.X - s.step.x, hy = (int)s.Y - s.step.y, hz = (int)s.Z - s.step.z;
                     if (hx >= 0 && hx < WORLDSIZE && hy >= 0 && hy < WORLDSIZE && hz >= 0 && hz < WORLDSIZE)
                     {
@@ -419,9 +399,6 @@ __forceinline bool Scene::TraverseDDA(
 }
 
 
-// ============================================================================
-//  Per-object DDA for instanced voxel objects
-// ============================================================================
 
 float Scene::TraceObjectDDA(
     const float3& localO, const float3& localD,
@@ -430,13 +407,11 @@ float Scene::TraceObjectDDA(
 {
     const float3 bmax = float3((float)obj.sizeX, (float)obj.sizeY, (float)obj.sizeZ);
 
-    // Reciprocal of local direction (un-normalized)
     const float3 rD = float3(
         (fabsf(localD.x) > 1e-20f) ? 1.0f / localD.x : 1e30f,
         (fabsf(localD.y) > 1e-20f) ? 1.0f / localD.y : 1e30f,
         (fabsf(localD.z) > 1e-20f) ? 1.0f / localD.z : 1e30f);
 
-    // Slab test against local AABB [0, size)
     const float tx1 = -localO.x * rD.x, tx2 = (bmax.x - localO.x) * rD.x;
     const float ty1 = -localO.y * rD.y, ty2 = (bmax.y - localO.y) * rD.y;
     const float tz1 = -localO.z * rD.z, tz2 = (bmax.z - localO.z) * rD.z;
@@ -448,8 +423,8 @@ float Scene::TraceObjectDDA(
 
     tEntry = max(tEntry, 0.f);
 
-    // Entry point
     const float3 entry = localO + localD * (tEntry + 1e-4f);
+    // Nudge by epsilon to avoid re-hitting the entry boundary voxel.
     int X = clamp((int)floorf(entry.x), 0, (int)obj.sizeX - 1);
     int Y = clamp((int)floorf(entry.y), 0, (int)obj.sizeY - 1);
     int Z = clamp((int)floorf(entry.z), 0, (int)obj.sizeZ - 1);
@@ -479,19 +454,17 @@ float Scene::TraceObjectDDA(
                 tmaxZ - tdeltaZ;
             if (hitT < tMax)
             {
-                // Face index: +X=0, -X=1, +Y=2, -Y=3, +Z=4, -Z=5
                 if (lastAxis < 0)
                 {
-                    // Use hit position to determine entry face — much more robust
-                    // than comparing slab t-values with floating-point equality
+                    // If we start inside the first occupied voxel, pick the nearest face.
                     float3 hitLocal = localO + localD * max(tEntry, 0.f);
                     float dists[6] = {
-                        (float)obj.sizeX - hitLocal.x,  // +X face (index 0)
-                        hitLocal.x,                      // -X face (index 1)
-                        (float)obj.sizeY - hitLocal.y,  // +Y face (index 2)
-                        hitLocal.y,                      // -Y face (index 3)
-                        (float)obj.sizeZ - hitLocal.z,  // +Z face (index 4)
-                        hitLocal.z                       // -Z face (index 5)
+                        (float)obj.sizeX - hitLocal.x,
+                        hitLocal.x,
+                        (float)obj.sizeY - hitLocal.y,
+                        hitLocal.y,
+                        (float)obj.sizeZ - hitLocal.z,
+                        hitLocal.z
                     };
                     outFace = 0;
                     float minD = dists[0];
@@ -500,7 +473,6 @@ float Scene::TraceObjectDDA(
                 }
                 else
                 {
-                    // Ray entered from the opposite side of step direction
                     if (lastAxis == 0)      outFace = (stepX > 0) ? 1 : 0;
                     else if (lastAxis == 1)  outFace = (stepY > 0) ? 3 : 2;
                     else                     outFace = (stepZ > 0) ? 5 : 4;
@@ -510,7 +482,6 @@ float Scene::TraceObjectDDA(
             }
         }
 
-        // Step
         if (tmaxX < tmaxY) {
             if (tmaxX < tmaxZ) {
                 if (tmaxX >= tMax) break;
@@ -557,7 +528,7 @@ void Scene::TraceInstanceBVH(
     tinybvh::Ray tbRay(
         { ray.O.x, ray.O.y, ray.O.z },
         { ray.D.x, ray.D.y, ray.D.z },
-        bestT);  // initialises hit.t — node tests prune against this
+        bestT);
 
     const Node* node = &instanceBVH.bvhNode[0];
     const Node* stack[64];
@@ -593,8 +564,6 @@ void Scene::TraceInstanceBVH(
                     bestVoxel = hitVoxel;
                     tbRay.hit.t = bestT;
 
-                    // Ignore hitFace from DDA — compute from world-space ray direction instead
-                    // The face we hit is the one whose inward normal most opposes the ray
                     float bestDot = 1e30f;
                     for (int f = 0; f < 6; f++)
                     {
@@ -692,9 +661,6 @@ bool Scene::TraceInstanceBVHOcclusion(Ray& ray) const
 }
 
 
-// ============================================================================
-//  FindNearest — world grid + spheres + instanced voxel objects
-// ============================================================================
 
 void Scene::FindNearest(Ray& ray) const
 {
@@ -705,7 +671,6 @@ void Scene::FindNearest(Ray& ray) const
     int   bestInstanceIdx = -1;
     uint  bestVoxel = 0;
 
-    // --- 1. Sphere intersection ---
     float nearestSphereT = 1e34f;
     int   nearestSphereIdx = -1;
     if (sphereSOA.count > 0)
@@ -736,7 +701,6 @@ void Scene::FindNearest(Ray& ray) const
         bestVoxel = 0;
     }
 
-    // --- 2. World-grid DDA ---
     if (voxelGridActive)
     {
         uint hitMat = 0;
@@ -753,7 +717,6 @@ void Scene::FindNearest(Ray& ray) const
         }
     }
 
-    // --- 3. Instanced voxel objects (TLAS BVH or fallback linear scan) ---
     if (!voxelInstances.empty())
     {
         int  instIdx = -1;
@@ -766,7 +729,6 @@ void Scene::FindNearest(Ray& ray) const
         }
         else
         {
-            // Fallback linear scan (0 or 1 instances — BVH requires >= 2)
             for (int i = 0; i < (int)voxelInstances.size(); i++)
             {
                 const VoxelInstance& inst = voxelInstances[i];
@@ -798,7 +760,7 @@ void Scene::FindNearest(Ray& ray) const
 
         if (instIdx >= 0)
         {
-            bestMatIdx = instVoxel;   // raw palette index — GetMat offsets it
+            bestMatIdx = instVoxel;
             bestAxis = instAxis;
             bestSphereIdx = -1;
             bestInstanceIdx = instIdx;
@@ -806,7 +768,6 @@ void Scene::FindNearest(Ray& ray) const
         }
     }
 
-    // --- Write results into ray ---
     ray.t = bestT;
     ray.materialIndex = bestMatIdx;
     ray.axis = bestAxis;
@@ -817,7 +778,6 @@ void Scene::FindNearest(Ray& ray) const
 
 bool Scene::IsOccluded(Ray& ray) const
 {
-    // World-grid occlusion
     if (voxelGridActive)
     {
         uint dummyMat = 0;
@@ -826,7 +786,6 @@ bool Scene::IsOccluded(Ray& ray) const
             return true;
     }
 
-    // Instanced voxel objects occlusion — respect the shadow flag
     if (instancesShadows && !voxelInstances.empty())
     {
         if (instanceBVHReady)

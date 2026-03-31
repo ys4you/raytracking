@@ -16,9 +16,7 @@ extern "C" {
         wchar_t* lpWideCharStr, int cchWideChar);
 }
 
-// Disable backends you don't have / don't need
 #define MA_NO_JACK
-//#define MA_NO_RUNTIME_LINKING
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
@@ -60,7 +58,6 @@ void AudioSystem::Play(const std::string& file, bool loop)
 {
     ma_sound* sound = nullptr;
 
-    // Reuse if already loaded
     if (sounds.find(file) == sounds.end())
     {
         sound = new ma_sound();

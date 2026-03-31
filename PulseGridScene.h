@@ -1,20 +1,3 @@
-// ============================================================
-// PulseGridScene.h — Beat-Synced Pulse Wave Grid
-// ============================================================
-// An 8×8 grid of cubes that reacts to 79 BPM rhythm.
-// Each beat spawns a circular wave from a random position.
-// Cubes rise in height and glow teal as the wave passes.
-// Multiple waves overlap creating interference patterns.
-//
-// Like ripples on a sterile white lake — chaotic but rhythmic.
-//
-// Side Order palette:
-//   Near White   #F5F5F5  — resting cubes
-//   Muted Teal   #8CB8B0  — active/pulsed cubes
-//   Emissive flash        — peak pulse moment
-//
-// 79 BPM, cubic ease-out.
-// ============================================================
 
 #pragma once
 #include "SceneManager.h"
@@ -28,23 +11,23 @@
 namespace GameScenes
 {
 
-	static constexpr uint8_t PAL_PG_REST  = 235;  // Near White
-	static constexpr uint8_t PAL_PG_PULSE = 236;  // Muted Teal
-	static constexpr uint8_t PAL_PG_FLASH = 237;  // Emissive peak
+	static constexpr uint8_t PAL_PG_REST  = 235;
+	static constexpr uint8_t PAL_PG_PULSE = 236;
+	static constexpr uint8_t PAL_PG_FLASH = 237;
 
 	static constexpr float PG_BPM  = 79.0f;
 	static constexpr float PG_BEAT = 60.0f / PG_BPM;
 	static constexpr float PG_RAD2DEG = 180.0f / 3.14159265f;
 
-	static constexpr int PG_GRID = 8;        // 8×8 grid
-	static constexpr int PG_MAX_WAVES = 6;   // max simultaneous waves
+	static constexpr int PG_GRID = 8;
+	static constexpr int PG_MAX_WAVES = 6;
 
 
 	struct PulseWave
 	{
-		float ox, oz;       // origin on grid (0..7)
-		float radius;       // current radius (expands over time)
-		float life;         // 0..1, fades out
+		float ox, oz;
+		float radius;
+		float life;
 		bool  active;
 	};
 
@@ -55,16 +38,14 @@ namespace GameScenes
 		int nextWave = 0;
 
 		float beatTimer = 0.0f;
-		float beatPhase = 0.0f;    // 0..1 within current beat
+		float beatPhase = 0.0f;
 		int   beatCount = 0;
 
-		// Wave parameters
-		float waveSpeed = 12.0f;    // grid cells per second
-		float waveDecay = 1.8f;     // seconds to full decay
-		float maxHeight = 25.0f;    // max Y displacement
-		float waveWidth = 1.5f;     // ring width in cells
+		float waveSpeed = 12.0f;
+		float waveDecay = 1.8f;
+		float maxHeight = 25.0f;
+		float waveWidth = 1.5f;
 
-		// Rotation
 		float angleX = 0, angleY = 0, angleZ = 0;
 		float speedX = 0.03f, speedY = 0.10f, speedZ = 0.02f;
 
@@ -74,7 +55,6 @@ namespace GameScenes
 		int  objBase = -1;
 		bool needsInit = true;
 
-		// Bloom spike
 		float bloomSpike = 0.0f;
 		float bloomDecay = 10.0f;
 
@@ -91,7 +71,6 @@ namespace GameScenes
 			bloomSpike = 0.4f;
 		}
 
-		// Get combined wave amplitude at grid position
 		float GetAmplitude(int gx, int gz) const
 		{
 			float amp = 0.0f;
@@ -104,7 +83,6 @@ namespace GameScenes
 				float dz = (float)gz - w.oz;
 				float dist = sqrtf(dx * dx + dz * dz);
 
-				// Ring shape: peak at radius, falls off on both sides
 				float ringDist = fabsf(dist - w.radius);
 				float ring = expf(-(ringDist * ringDist) / (waveWidth * waveWidth));
 
@@ -134,11 +112,9 @@ namespace GameScenes
 			if (paused) return;
 			float dt = dtMs * 0.001f * speedMul;
 
-			// Beat tracking
 			beatTimer += dt;
 			beatPhase = fmodf(beatTimer / PG_BEAT, 1.0f);
 
-			// Spawn wave on each beat
 			int currentBeat = (int)(beatTimer / PG_BEAT);
 			if (currentBeat > beatCount)
 			{
@@ -146,7 +122,6 @@ namespace GameScenes
 				SpawnWave();
 			}
 
-			// Update waves
 			for (int i = 0; i < PG_MAX_WAVES; i++)
 			{
 				if (!waves[i].active) continue;
@@ -183,9 +158,9 @@ namespace GameScenes
 	{
 		pg.objBase = (int)scene.voxelObjects.size();
 
-		scene.voxelObjects.push_back(VoxelObject(1, 1, 1, { PAL_PG_REST }));   // 0: rest
-		scene.voxelObjects.push_back(VoxelObject(1, 1, 1, { PAL_PG_PULSE }));  // 1: pulse
-		scene.voxelObjects.push_back(VoxelObject(1, 1, 1, { PAL_PG_FLASH }));  // 2: flash
+		scene.voxelObjects.push_back(VoxelObject(1, 1, 1, { PAL_PG_REST }));
+		scene.voxelObjects.push_back(VoxelObject(1, 1, 1, { PAL_PG_PULSE }));
+		scene.voxelObjects.push_back(VoxelObject(1, 1, 1, { PAL_PG_FLASH }));
 
 		auto mat = [](float3 c, float r) -> Material
 			{
@@ -196,11 +171,8 @@ namespace GameScenes
 				return m;
 			};
 
-		// Near White — resting
 		scene.materials[MAT_COUNT + (PAL_PG_REST - 1)] = mat(float3(0.96f, 0.96f, 0.96f), 0.30f);
-		// Muted Teal — pulsed
 		scene.materials[MAT_COUNT + (PAL_PG_PULSE - 1)] = mat(float3(0.549f, 0.722f, 0.690f), 0.20f);
-		// Emissive flash — peak
 		{
 			Material m;
 			m.type = MaterialType::Emissive;
@@ -243,24 +215,21 @@ namespace GameScenes
 			{
 				float amp = pg.GetAmplitude(gx, gz);
 
-				// Position: flat grid, Y rises with amplitude
 				float3 pos(
 					center.x - gridExt * 0.5f + (gx + 0.5f) * cellSize,
 					center.y + amp * pg.maxHeight,
 					center.z - gridExt * 0.5f + (gz + 0.5f) * cellSize
 				);
 
-				// Scale: base width, height stretches with amplitude
 				float heightScale = baseScale * (1.0f + amp * 2.0f);
 
-				// Color: rest → pulse → flash based on amplitude
 				int objIdx;
 				if (amp > 0.7f)
-					objIdx = pg.objBase + 2;  // emissive flash
+					objIdx = pg.objBase + 2;
 				else if (amp > 0.15f)
-					objIdx = pg.objBase + 1;  // muted teal
+					objIdx = pg.objBase + 1;
 				else
-					objIdx = pg.objBase + 0;  // near white
+					objIdx = pg.objBase + 0;
 
 				VoxelFactory::CreateInstance(
 					scene, objIdx,
@@ -273,7 +242,6 @@ namespace GameScenes
 	}
 
 
-	// ── Scene ─────────────────────────────────────────────────────
 
 	inline SceneDef PulseGridShowcase()
 	{
@@ -289,7 +257,6 @@ namespace GameScenes
 		s.camPos = float3(0.28f, 0.60f, 0.20f);
 		s.camTarget = float3(0.50f, 0.47f, 0.50f);
 
-		// Orbit spline
 		s.splinePoints = {
 			float3(0.25f, 0.60f, 0.22f),
 			float3(0.50f, 0.60f, 0.15f),
@@ -302,7 +269,6 @@ namespace GameScenes
 			float3(0.25f, 0.60f, 0.22f),
 		};
 
-		// Clinical lighting
 		s.sky.sunDir = normalize(float3(0.3f, -0.5f, 0.2f));
 		s.sky.sunColor = float3(1.0f, 0.98f, 0.95f);
 		s.sky.sunIntensity = 2.0f;
@@ -353,7 +319,6 @@ namespace GameScenes
 					[&]() { int n = 0; for (int i = 0; i < PG_MAX_WAVES; i++) if (pg->waves[i].active) n++; return n; }(),
 					(int)scene.voxelInstances.size());
 
-				// Beat indicator
 				ImGui::ProgressBar(pg->beatPhase, ImVec2(-1, 3));
 
 				ImGui::Spacing();
@@ -406,4 +371,4 @@ namespace GameScenes
 		return s;
 	}
 
-} // namespace GameScenes
+}

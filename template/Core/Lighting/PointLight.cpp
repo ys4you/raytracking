@@ -15,7 +15,6 @@ float3 PointLight::Illuminate(const ShadingPoint& sp, Scene& scene) const
     float distance = length(L);
     const float3 Ldir = normalize(L);
 
-    // Shadow ray
     Ray shadowRay(sp.position, Ldir, distance);
     if (scene.IsOccluded(shadowRay))
         return float3(0);

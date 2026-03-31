@@ -1,24 +1,18 @@
 ﻿#pragma once
-/// @brief  A placed copy of a VoxelObject in the world, with its own transform.
-///
-/// Stores the raw transform parameters (position, rotation, scale, pivot)
-/// AND the precomputed matrices/AABB/normals needed for ray intersection.
-/// Call BuildMatrices() after changing any transform field.
+/// <summary>Represents a placed voxel object with transform and cached data.</summary>
 struct VoxelInstance
 {
-    // ---- Transform parameters (user-facing) ----
     int    modelIndex;
     float3 position;
-    float3 rotation;    // Euler angles in radians (Y, X, Z order)
+    float3 rotation;
     float3 scale;
-    float3 pivot;       // in LOCAL voxel units (e.g. half-size for centre rotation)
+    float3 pivot;
 
-    // ---- Precomputed data (call BuildMatrices to refresh) ----
     mat4   localToWorld;
     mat4   worldToLocal;
     float3 worldAABBmin;
     float3 worldAABBmax;
-    float3 worldNormals[6];         // +X, -X, +Y, -Y, +Z, -Z
+    float3 worldNormals[6];
     bool   matricesDirty = true;
 
     VoxelInstance() = default;
@@ -28,18 +22,9 @@ struct VoxelInstance
     {
     }
 
-    /// @brief  Recompute localToWorld, worldToLocal, world AABB, and world normals.
-    ///         sizeX/Y/Z are the dimensions of the referenced VoxelObject.
+    /// <summary>Recomputes transform matrices, world AABB, and world normals.</summary>
     void BuildMatrices(uint sizeX, uint sizeY, uint sizeZ)
     {
-        // localToWorld = T(position) * Ry * Rx * Rz * S * T(-pivot)
-        //
-        // T(-pivot)  : shift so pivot point is at local origin
-        // S          : scale from local voxel units to world units
-        // Ry*Rx*Rz   : rotate in world space
-        // T(position): place in world
-        //
-        // pivot is in LOCAL voxel units (e.g. (32,32,32) for a 64^3 object centre)
         localToWorld = mat4::Translate(position)
             * mat4::RotateY(rotation.y)
             * mat4::RotateX(rotation.x)
@@ -51,7 +36,6 @@ struct VoxelInstance
 
         float3 localMax = float3((float)sizeX, (float)sizeY, (float)sizeZ);
 
-        // Transform all 8 corners of the local AABB to get tight world AABB
         float3 corners[8] = {
             float3(0, 0, 0),
             float3(localMax.x, 0, 0),
@@ -72,9 +56,6 @@ struct VoxelInstance
             worldAABBmax = fmaxf(worldAABBmax, w);
         }
 
-        // Pre-transform the 6 axis-aligned face normals to world space.
-        // Normal transform = transpose of inverse's upper-3x3.
-        // Row-major (M^-1)^T * n => read COLUMNS of worldToLocal:
         const float3 localN[6] = {
             { 1, 0, 0}, {-1, 0, 0},
             { 0, 1, 0}, { 0,-1, 0},

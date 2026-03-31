@@ -1,19 +1,5 @@
-// Template, IGAD version 2026
-// IGAD/NHTV/BUAS/UU - Jacco Bikker - 2006-2026
 
-// In this file: a basic, but quite complete set of math functionality.
-// Overview:
-// Line 27 - 120: Basic vector type definition. This covers all variants that
-//     are normally encountered during game / graphics development.
-// Line 128 - 540: Operations on the basic types. Based on NVIDIA's CUDA math
-//     library. Pretty complete but feel free to add your own operations.
-// Line 542 - 784: Matrix classes (2x2, 4x4) and operations on them.
-// Line 786 - 905: Quaternion class.
-// Line 907 - 961: Axis-aligned bounding box (AABB) class.
 
-// These math classes have been battle-tested in the Lighthouse 2 real-time
-// path tracing framework, as well as numerous other math-heavy projects, see
-// https://github.com/jbikker for examples.
 
 #pragma once
 #include <tiny_bvh.h>
@@ -23,7 +9,6 @@ namespace Tmpl8 {
 #pragma warning ( push )
 #pragma warning ( disable: 4201 /* nameless struct / union */ )
 
-// vector type placeholders, carefully matching OpenCL's layout and alignment
 struct ALIGN( 8 ) int2
 {
 	int2() = default;
@@ -122,7 +107,7 @@ struct float3
 	float3( const int4 a ) : x( (float)a.x ), y( (float)a.y ), z( (float)a.z ) {}
 	float2 xy() { return float2( x, y ); }
 	float2 yz() { return float2( y, z ); }
-	float halfArea() { return x < -1e30f ? 0 : (x * y + y * z + z * x); } // for SAH calculations
+	float halfArea() { return x < -1e30f ? 0 : (x * y + y * z + z * x); }
 	union { struct { float x, y, z; }; float cell[3]; };
 	float& operator [] ( const int n ) { return cell[n]; }
 	const float& operator [] ( const int n ) const { return cell[n]; }
@@ -143,7 +128,6 @@ struct ALIGN( 4 ) uchar4
 
 using namespace Tmpl8;
 
-// random numbers
 uint InitSeed( uint seedBase );
 uint RandomUInt();
 uint RandomUInt( uint& seed );
@@ -151,7 +135,6 @@ float RandomFloat();
 float RandomFloat( uint& seed );
 float Rand( float range );
 
-// math
 inline float fminf( const float a, const float b ) { return a < b ? a : b; }
 inline float fmaxf( const float a, const float b ) { return a > b ? a : b; }
 inline float rsqrtf( const float x ) { return 1.0f / sqrtf( x ); }
@@ -167,7 +150,7 @@ inline float3 safercp( const float3 a ) { return float3( safercp( a.x ), safercp
 inline float2 make_float2( const float a, float b ) { float2 f2; f2.x = a, f2.y = b; return f2; }
 inline float2 make_float2( const float s ) { return make_float2( s, s ); }
 inline float2 make_float2( const float3& a ) { return make_float2( a.x, a.y ); }
-inline float2 make_float2( const int2& a ) { return make_float2( float( a.x ), float( a.y ) ); } // explicit casts prevent gcc warnings
+inline float2 make_float2( const int2& a ) { return make_float2( float( a.x ), float( a.y ) ); }
 inline float2 make_float2( const uint2& a ) { return make_float2( float( a.x ), float( a.y ) ); }
 inline int2 make_int2( const int a, const int b ) { int2 i2; i2.x = a, i2.y = b; return i2; }
 inline int2 make_int2( const int s ) { return make_int2( s, s ); }
@@ -542,7 +525,7 @@ inline float2 normalize( const float2& v ) { float invLen = rsqrtf( dot( v, v ) 
 inline float3 normalize( const float3& v ) { float invLen = rsqrtf( dot( v, v ) ); return v * invLen; }
 inline float4 normalize( const float4& v ) { float invLen = rsqrtf( dot( v, v ) ); return v * invLen; }
 
-inline uint dominantAxis( const float2& v ) { float x = fabs( v.x ), y = fabs( v.y ); return x > y ? 0 : 1; } // for coherent grid traversal
+inline uint dominantAxis( const float2& v ) { float x = fabs( v.x ), y = fabs( v.y ); return x > y ? 0 : 1; }
 inline uint dominantAxis( const float3& v ) { float x = fabs( v.x ), y = fabs( v.y ), z = fabs( v.z ); float m = max( max( x, y ), z ); return m == x ? 0 : (m == y ? 1 : 2); }
 
 inline float2 floorf( const float2& v ) { return make_float2( floorf( v.x ), floorf( v.y ) ); }
@@ -599,7 +582,6 @@ inline float3 diffuseReflection( const float3& N )
 
 inline float3 cosineweighteddiffusereflection( const float3 N, const float r0, const float r1 )
 {
-	// based on Global Illumination Compendium
 	float term1 = 6.28318531f * r0, term2 = sqrtf( 1 - r1 );
 	float3 R( cosf( term1 ) * term2, sinf( term1 ) * term2, sqrtf( r1 ) );
 	float3 tmp = (fabs( N.x ) > 0.99f) ? float3( 0, 1, 0 ) : float3( 1, 0, 0 );
@@ -609,7 +591,6 @@ inline float3 cosineweighteddiffusereflection( const float3 N, const float r0, c
 
 inline float3 cosineweighteddiffusereflection( const float3 N, uint& seed )
 {
-	// blog.demofox.org/2020/06/06/casual-shadertoy-path-tracing-2-image-improvement-and-glossy-reflections
 	float3 R;
 	do
 	{
@@ -620,7 +601,6 @@ inline float3 cosineweighteddiffusereflection( const float3 N, uint& seed )
 
 inline float3 cosweightedDiffuseReflection( const float3 N )
 {
-	// blog.demofox.org/2020/06/06/casual-shadertoy-path-tracing-2-image-improvement-and-glossy-reflections
 	float3 R;
 	do
 	{
@@ -629,13 +609,11 @@ inline float3 cosweightedDiffuseReflection( const float3 N )
 	return normalize( N + normalize( R ) );
 }
 
-// matrix classes
 class mat2
 {
 public:
 	mat2() = default;
 	mat2( float2 a, float2 b ) { cell[0] = a.x, cell[1] = b.x, cell[2] = a.y, cell[3] = b.y; }
-	// mat2( float2 a, float2 b ) { cell[0] = a.x, cell[1] = a.y, cell[2] = b.x, cell[3] = b.y; }
 	mat2( float a, float b, float c, float d ) { cell[0] = a, cell[1] = b, cell[2] = c, cell[3] = d; }
 	__declspec(align(16)) float cell[4] = { 1, 0, 0, 1 };
 	constexpr static mat2 Identity() { return mat2{}; }
@@ -689,7 +667,6 @@ public:
 	static mat4 Rotate( const float x, const float y, const float z, const float a )
 	{
 		const float c = cosf( a ), l_c = 1 - c, s = sinf( a );
-		// row major
 		mat4 m;
 		m[0] = x * x + (1 - x * x) * c, m[1] = x * y * l_c + z * s, m[2] = x * z * l_c - y * s, m[3] = 0;
 		m[4] = x * y * l_c - z * s, m[5] = y * y + (1 - y * y) * c, m[6] = y * z * l_c + x * s, m[7] = 0;
@@ -710,15 +687,12 @@ public:
 	}
 	static mat4 LookAt( const float3& pos, const float3& look, const float3& up )
 	{
-		// PBRT's lookat
 		mat4 cameraToWorld;
-		// initialize fourth column of viewing matrix
 		cameraToWorld( 0, 3 ) = pos.x;
 		cameraToWorld( 1, 3 ) = pos.y;
 		cameraToWorld( 2, 3 ) = pos.z;
 		cameraToWorld( 3, 3 ) = 1;
 
-		// initialize first three columns of viewing matrix
 		float3 dir = normalize( look - pos );
 		float3 right = cross( normalize( up ), dir );
 		if (dot( right, right ) == 0)
@@ -756,7 +730,6 @@ public:
 	{
 		mat4 r;
 	#ifdef _MSC_VER
-		// use SSE to transpose the 3x3 part
 		__m128& inM0 = (__m128&)cell[0], & outM0 = (__m128&)r.cell[0];
 		__m128& inM1 = (__m128&)cell[4], & outM1 = (__m128&)r.cell[4];
 		__m128& inM2 = (__m128&)cell[8], & outM2 = (__m128&)r.cell[8];
@@ -765,7 +738,6 @@ public:
 		outM1 = _mm_shuffle_ps( t0, inM2, 0b11011101 );
 		outM2 = _mm_shuffle_ps( t1, inM2, 0b11101000 );
 	#else
-		// fallback for crossplatform compatibility
 		r[0] = cell[0], r[1] = cell[4], r[2] = cell[8];
 		r[4] = cell[1], r[5] = cell[5], r[6] = cell[9];
 		r[8] = cell[2], r[9] = cell[6], r[10] = cell[10];
@@ -778,7 +750,6 @@ public:
 	}
 	CHECK_RESULT mat4 Inverted() const
 	{
-		// from MESA, via http://stackoverflow.com/questions/1148309/inverting-a-4x4-matrix
 		const float inv[16] = {
 			cell[5] * cell[10] * cell[15] - cell[5] * cell[11] * cell[14] - cell[9] * cell[6] * cell[15] +
 			cell[9] * cell[7] * cell[14] + cell[13] * cell[6] * cell[11] - cell[13] * cell[7] * cell[10],
@@ -825,7 +796,6 @@ public:
 
 	CHECK_RESULT mat4 Inverted3x3() const
 	{
-		// via https://stackoverflow.com/questions/983999/simple-3x3-matrix-inverse-code-c
 		const float invdet = 1.0f / (cell[0] * (cell[5] * cell[10] - cell[6] * cell[9]) -
 			cell[4] * (cell[1] * cell[10] - cell[9] * cell[2]) +
 			cell[8] * (cell[1] * cell[6] - cell[5] * cell[2]));
@@ -880,7 +850,7 @@ float3 TransformVector( const float3& a, const mat4& M );
 float3 TransformPosition_SSE( const __m128& a, const mat4& M );
 float3 TransformVector_SSE( const __m128& a, const mat4& M );
 
-class quat // based on https://github.com/adafruit
+class quat
 {
 public:
 	quat() = default;
@@ -971,13 +941,11 @@ public:
 	}
 	static quat slerp( const quat& a, const quat& b, const float t )
 	{
-		// from GLM, via blog.magnum.graphics/backstage/the-unnecessarily-short-ways-to-do-a-quaternion-slerp
 		quat r = b;
 		float cosTheta = a.w * r.w + a.x * r.x + a.y * r.y + a.z * r.z;
 		if (cosTheta < 0) r = r * -1.0f, cosTheta = -cosTheta;
 		if (cosTheta > 0.99f)
 		{
-			// Linear interpolation
 			r.w = (1 - t) * a.w + t * r.w;
 			r.x = (1 - t) * a.x + t * r.x;
 			r.y = (1 - t) * a.y + t * r.y;
@@ -986,7 +954,6 @@ public:
 		else
 		{
 			float angle = acosf( cosTheta );
-			// float s1 = sinf( 1 - t ), s2 = sinf( t * angle ), s3 = sinf( angle );
 			float s1 = sinf( (1 - t) * angle ), s2 = sinf( t * angle ), rs3 = 1.0f / sinf( angle );
 			r.w = (s1 * a.w + s2 * r.w) * rs3;
 			r.x = (s1 * a.x + s2 * r.x) * rs3;
@@ -1003,7 +970,6 @@ public:
 	float w = 1, x = 0, y = 0, z = 0;
 };
 
-// axis aligned bounding box class
 class aabb
 {
 public:
@@ -1042,7 +1008,6 @@ public:
 		if (Extend( 2 ) > Extend( a )) a = 2;
 		return a;
 	}
-	// data members
 #pragma warning ( push )
 #pragma warning ( disable: 4201 /* nameless struct / union */ )
 	union
@@ -1060,24 +1025,19 @@ public:
 	__inline float Center( uint axis ) const { return (bmin[axis] + bmax[axis]) * 0.5f; }
 };
 
-// matrix / vector multiplication
 float3 TransformPosition( const float3& a, const mat4& M );
 float3 TransformVector( const float3& a, const mat4& M );
 float3 TransformPosition_SSE( const __m128& a, const mat4& M );
 float3 TransformVector_SSE( const __m128& a, const mat4& M );
 
-// generic swap
 template <class T> void Swap( T& x, T& y ) { T t; t = x, x = y, y = t; }
 
-// Perlin noise
 float noise2D( const float x, const float y );
 float noise3D( const float x, const float y, const float z );
 
-// half-floats
 float half_to_float( const half x );
 half float_to_half( const float x );
 
-// bad float detection (method from OpenCV)
 inline bool isnan( const float value )
 {
 	const uint ieee754 = *reinterpret_cast<const uint*>(&value);

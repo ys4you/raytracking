@@ -14,12 +14,14 @@ namespace Tmpl8
 		std::vector<PhysicsBall> balls;
 		double accumulator = 0.0;
 
+		/// <summary>Adds a simulated ball and returns its index.</summary>
 		int AddBall(float3 position, float radius, float mass = 1.0f)
 		{
 			balls.emplace_back(position, radius, mass);
 			return (int)balls.size() - 1;
 		}
 
+		/// <summary>Accumulates frame time and runs fixed simulation steps.</summary>
 		void Update(float frameTime, Scene& scene)
 		{
 			accumulator += frameTime;
@@ -33,6 +35,7 @@ namespace Tmpl8
 			}
 		}
 
+		/// <summary>Runs one fixed physics step.</summary>
 		void Step(float dt, Scene& scene)
 		{
 			for (auto& ball : balls)
@@ -44,4 +47,4 @@ namespace Tmpl8
 		}
 	};
 
-} // namespace Tmpl8
+}

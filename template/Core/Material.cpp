@@ -2,18 +2,15 @@
 #include "Material.h"
 #include <algorithm>
 
-//AI partially helped me with this 
-float3 Material::EvaluateBRDF(const float3& wo, const float3& wi, const float3& N) const 
+float3 Material::EvaluateBRDF(const float3& wo, const float3& wi, const float3& N) const
 {
     static constexpr double Pi = 3.14159265f;
 
     if (type != MaterialType::Microfacet)
-        return albedo / Pi; // Lambertian fallback
+        return albedo / Pi;
 
-    // Half-vector
     float3 H = normalize(wi + wo);
 
-    // Dot products
     float NdotL = std::max(dot(N, wi), 0.0f);
     float NdotV = std::max(dot(N, wo), 0.0f);
     float NdotH = std::max(dot(N, H), 0.0f);
@@ -22,7 +19,6 @@ float3 Material::EvaluateBRDF(const float3& wo, const float3& wi, const float3& 
     if (NdotL <= 0.0f || NdotV <= 0.0f)
         return float3{ 0,0,0 };
 
-    // Simple GGX terms
     float alpha = roughness * roughness;
     float alpha2 = alpha * alpha;
     float denom = NdotH * NdotH * (alpha2 - 1.0f) + 1.0f;

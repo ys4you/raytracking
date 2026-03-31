@@ -1,20 +1,10 @@
-// Template, IGAD version 2026
-// IGAD/NHTV/BUAS/UU - Jacco Bikker - 2006-2026
 
-// In this file: implementation of various functions of the template
-// math library defined in tmpl8math.h.
 
 #include "template.h"
 
-// random number generator - Marsaglia's xor32
-// This is a high-quality RNG that uses a single 32-bit seed. More info:
-// https://www.researchgate.net/publication/5142825_Xorshift_RNGs
 
-// RNG seed, per thread.
 static uint thread_local seed = 0x12345678;
 
-// WangHash: calculates a high-quality seed based on an arbitrary non-zero
-// integer. Use this to create your own seed based on e.g. thread index.
 uint WangHash( uint s )
 {
 	s = (s ^ 61) ^ (s >> 16);
@@ -28,8 +18,6 @@ uint InitSeed( uint seedBase )
 	return WangHash( (seedBase + 1) * 17 );
 }
 
-// RandomUInt()
-// Update the seed and return it as a random 32-bit unsigned int.
 uint RandomUInt()
 {
 	seed ^= seed << 13;
@@ -38,13 +26,9 @@ uint RandomUInt()
 	return seed;
 }
 
-// RandomFloat()
-// Calculate a random unsigned int and cast it to a float in the range
-// [0..1)
 float RandomFloat() { return RandomUInt() * 2.3283064365387e-10f; }
 float Rand( float range ) { return RandomFloat() * range; }
 
-// Calculate a random number based on a specific seed
 uint RandomUInt( uint& customSeed )
 {
 	customSeed ^= customSeed << 13;
@@ -54,7 +38,6 @@ uint RandomUInt( uint& customSeed )
 }
 float RandomFloat( uint& customSeed ) { return RandomUInt( customSeed ) * 2.3283064365387e-10f; }
 
-// Perlin noise implementation - https://stackoverflow.com/questions/29711668/perlin-noise-generation
 static int numX = 512, numY = 512, numOctaves = 3, primeIndex = 0;
 static float persistence = 0.5f;
 static int primes[10][3] = {
@@ -109,28 +92,23 @@ float noise2D( const float x, const float y )
 float noise3D( const float x, const float y, const float z )
 {
 	float noise = 0.0f;
-	float frequency = 5; // (float)(2 << numOctaves);
+	float frequency = 5;
 	float amplitude = 0.5f / 6.0f;
 	for (int i = 0; i < numOctaves; ++i)
 	{
-		// get all permutations of noise for each individual axis
 		const float noiseXY = InterpolatedNoise( i, x * frequency, y * frequency );
 		const float noiseXZ = InterpolatedNoise( i, x * frequency, z * frequency );
 		const float noiseYZ = InterpolatedNoise( i, y * frequency, z * frequency );
-		// reverse of the permutations of noise for each individual axis
 		const float noiseYX = InterpolatedNoise( i, y * frequency, x * frequency );
 		const float noiseZX = InterpolatedNoise( i, z * frequency, x * frequency );
 		const float noiseZY = InterpolatedNoise( i, z * frequency, y * frequency );
-		// use the average of the noise functions
 		noise += (noiseXY + noiseXZ + noiseYZ + noiseYX + noiseZX + noiseZY) * amplitude;
 		amplitude *= persistence;
 		frequency *= 2.0f;
 	}
-	// use the average of all octaves
 	return noise;
 }
 
-// math implementations
 int3::int3( const float3& a )
 {
 	x = (int)a.x, y = (int)a.y, z = (int)a.z;
@@ -221,7 +199,6 @@ float3 TransformVector( const float3& a, const mat4& M )
 	return make_float3( make_float4( a, 0 ) * M );
 }
 
-// Fast matrix-vector multiplication using SSE
 float3 TransformPosition_SSE( const __m128& a, const mat4& M )
 {
 	__m128 a4 = a;
@@ -245,7 +222,6 @@ float3 TransformVector_SSE( const __m128& a, const mat4& M )
 	return float3( v.m128_f32[0], v.m128_f32[1], v.m128_f32[2] );
 }
 
-// 16-bit floats
 static uint as_uint( const float x ) { return *(uint*)&x; }
 float as_float( const uint x ) { return *(float*)&x; }
 float half_to_float( const half x )
@@ -256,5 +232,5 @@ float half_to_float( const half x )
 half float_to_half( const float x )
 {
 	const uint b = as_uint( x ) + 0x00001000, e = (b & 0x7F800000) >> 23, m = b & 0x007FFFFF;
-	return (half)((b & 0x80000000) >> 16 | (e > 112) * ((((e - 112) << 10) & 0x7C00) | m >> 13) | ((e < 113) & (e > 101)) * ((((0x007FF000 + m) >> (125 - e)) + 1) >> 1) | (e > 143) * 0x7FFF); // sign : normalized : denormalized : saturate
+	return (half)((b & 0x80000000) >> 16 | (e > 112) * ((((e - 112) << 10) & 0x7C00) | m >> 13) | ((e < 113) & (e > 101)) * ((((0x007FF000 + m) >> (125 - e)) + 1) >> 1) | (e > 143) * 0x7FFF);
 }

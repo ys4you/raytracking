@@ -1,5 +1,3 @@
-// Template, IGAD version 2026
-// IGAD/NHTV/BUAS/UU - Jacco Bikker - 2006-2026
 
 #include "template.h"
 
@@ -10,59 +8,53 @@
 
 using namespace Tmpl8;
 
-// Surface class implementation
 
 Surface::Surface( int w, int h, uint* b ) : pixels( b ), width( w ), height( h ) {}
 
 Surface::Surface( int w, int h ) : width( w ), height( h )
 {
 	pixels = (uint*)MALLOC64( w * h * sizeof( uint ) );
-	ownBuffer = true; // needs to be deleted in destructor
+	ownBuffer = true;
 }
 Surface::Surface( const char* file ) : pixels( 0 ), width( 0 ), height( 0 )
 {
-	// check if file exists; show an error if there is a problem
 	FILE* f = fopen( file, "rb" );
 	if (!f) FatalError( "File not found: %s", file );
 	fclose( f );
-	// load the file
 	Surface::LoadFromFile( file );
 }
 
 void Surface::LoadFromFile( const char* file )
 {
-	// use stb_image to load the image file
 	int n;
 	unsigned char* data = stbi_load( file, &width, &height, &n, 0 );
-	if (!data) return; // load failed
+	if (!data) return;
 	pixels = (uint*)MALLOC64( width * height * sizeof( uint ) );
-	ownBuffer = true; // needs to be deleted in destructor
+	ownBuffer = true;
 	const int s = width * height;
 	if (n == 1) /* greyscale */ for (int i = 0; i < s; i++)
 	{
 		const unsigned char p = data[i];
 		pixels[i] = p + (p << 8) + (p << 16);
 	}
-	else if (n == 4) // bitmap has alpha data
+	else if (n == 4)
 	{
 		for (int i = 0; i < s; i++) pixels[i] = (data[i * 4 + 3] << 24) + (data[i * 4 + 0] << 16) + (data[i * 4 + 1] << 8) + data[i * 4 + 2];
 	}
-	else // no alpha
+	else
 	{
 		for (int i = 0; i < s; i++) pixels[i] = (data[i * n + 0] << 16) + (data[i * n + 1] << 8) + data[i * n + 2];
 	}
-	// free stb_image data
 	stbi_image_free( data );
 }
 
 Surface::~Surface()
 {
-	if (ownBuffer) FREE64( pixels ); // free only if we allocated the buffer ourselves
+	if (ownBuffer) FREE64( pixels );
 }
 
 void Surface::Clear( uint c )
 {
-	// WARNING: not the fastest way to do this.
 	const int s = width * height;
 	for (int i = 0; i < s; i++) pixels[i] = c;
 }
@@ -83,12 +75,10 @@ void Surface::Box( int x1, int y1, int x2, int y2, uint c )
 
 void Surface::Bar( int x1, int y1, int x2, int y2, uint c )
 {
-	// clipping
 	if (x1 < 0) x1 = 0;
 	if (x2 >= width) x2 = width - 1;
 	if (y1 < 0) y1 = 0;
 	if (y2 >= height) y2 = height - 1;
-	// draw clipped bar
 	uint* a = x1 + y1 * width + pixels;
 	for (int y = y1; y <= y2; y++)
 	{
@@ -97,12 +87,10 @@ void Surface::Bar( int x1, int y1, int x2, int y2, uint c )
 	}
 }
 
-// Surface::Print: Print some text with the hard-coded mini-font.
 void Surface::Print( const char* s, int x1, int y1, uint c )
 {
 	if (!fontInitialized)
 	{
-		// we will initialize the font on first use
 		InitCharset();
 		fontInitialized = true;
 	}
@@ -119,11 +107,8 @@ void Surface::Print( const char* s, int x1, int y1, uint c )
 	}
 }
 
-// Surface::Line: Draw a line between the specified screen coordinates.
-// Uses clipping for lines that are partially off-screen. Not efficient.
 void Surface::Line( float x1, float y1, float x2, float y2, uint c )
 {
-	// clip (Cohen-Sutherland, https://en.wikipedia.org/wiki/Cohen%E2%80%93Sutherland_algorithm)
 	const float xmin = 0, ymin = 0, xmax = (float)width - 1, ymax = (float)height - 1;
 	int c0 = OUTCODE( x1, y1 ), c1 = OUTCODE( x2, y2 );
 	bool accept = false;
@@ -151,8 +136,6 @@ void Surface::Line( float x1, float y1, float x2, float y2, uint c )
 		*(pixels + (int)x1 + (int)y1 * width) = c;
 }
 
-// Surface::CopyTo: Copy the contents of one Surface to another, at the specified
-// location. With clipping.
 void Surface::CopyTo( Surface* d, int x, int y )
 {
 	uint* dst = d->pixels;
@@ -237,7 +220,7 @@ void Surface::InitCharset()
 	SetChar( 44, "::o::", ":::o:", ":::o:", ":::o:", "::o::" );
 	SetChar( 45, ":::::", ":::::", ":::::", ":::::", ":::::" );
 	SetChar( 46, "ooooo", "ooooo", "ooooo", "ooooo", "ooooo" );
-	SetChar( 47, "::o::", "::o::", ":::::", ":::::", ":::::" ); // Tnx Ferry
+	SetChar( 47, "::o::", "::o::", ":::::", ":::::", ":::::" );
 	SetChar( 48, "o:o:o", ":ooo:", "ooooo", ":ooo:", "o:o:o" );
 	SetChar( 49, "::::o", ":::o:", "::o::", ":o:::", "o::::" );
 	char c[] = "abcdefghijklmnopqrstuvwxyz0123456789!?:=,.-() #'*/";

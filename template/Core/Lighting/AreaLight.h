@@ -73,7 +73,7 @@ inline float3 IlluminateArea(
         Ray shadowRay(
             sp.position + sp.normal * EPS,
             Ldir,
-            sqrt(dist2) - EPS // keep this simple & safe
+            sqrt(dist2) - EPS
         );
 
         if (scene.IsOccluded(shadowRay))

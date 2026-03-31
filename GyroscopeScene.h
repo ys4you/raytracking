@@ -1,21 +1,3 @@
-// ============================================================
-// GyroscopeScene.h — 3-Axis Gimbal Gyroscope: 1000 Spheres
-// ============================================================
-// Narrative animation sequence:
-//   Phase 0 — ORDER:       Clean 3-axis gimbal, moderate speed
-//   Phase 1 — CONVERGE:    Middle gimbal drifts toward outer (lock approaching)
-//   Phase 2 — GIMBAL LOCK: Two axes aligned, system oscillates trying to escape
-//   Phase 3 — SPIN OUT:    Uncontrollable acceleration, everything spins wildly
-//   Phase 4 — FREEZE:      Sudden deceleration to total stop
-//   Phase 5 — COLLAPSE:    Orbits decay, spheres scatter, order dies
-//   Then loops back to ORDER.
-//
-// Thematic: "Order tried to control everything. It locked up.
-//            It panicked. It lost control. It broke."
-//
-// Register with:
-//     mgr.AddScene(GameScenes::GyroscopeShowcase());
-// ============================================================
 
 #pragma once
 #include "SceneManager.h"
@@ -23,7 +5,6 @@
 namespace GameScenes
 {
 
-	// ── Material IDs ──────────────────────────────────────────
 	static constexpr uint MAT_GYRO_WHITE = MAT_RANDOM_START;
 	static constexpr uint MAT_GYRO_CHROME = MAT_RANDOM_START + 1;
 	static constexpr uint MAT_GYRO_GLASS = MAT_RANDOM_START + 2;
@@ -33,18 +14,16 @@ namespace GameScenes
 	static constexpr uint MAT_GYRO_CENTER = MAT_RANDOM_START + 6;
 
 
-	// ── Animation phases ──────────────────────────────────────
 	enum GyroPhase
 	{
-		GYRO_ORDER = 0,       //  0 – 10s  clean rotation
-		GYRO_CONVERGE,        // 10 – 14s  gimbals converging
-		GYRO_LOCK,            // 14 – 18s  gimbal lock, panic oscillation
-		GYRO_SPINOUT,         // 18 – 21s  uncontrolled spin
-		GYRO_FREEZE,          // 21 – 23s  sudden stop
-		GYRO_COLLAPSE,        // 23 – 30s  orbits decay, spheres scatter
+		GYRO_ORDER = 0,
+		GYRO_CONVERGE,
+		GYRO_LOCK,
+		GYRO_SPINOUT,
+		GYRO_FREEZE,
+		GYRO_COLLAPSE,
 	};
 
-	// Phase timing (seconds from cycle start)
 	static constexpr float T_CONVERGE = 10.0f;
 	static constexpr float T_LOCK = 14.0f;
 	static constexpr float T_SPINOUT = 18.0f;
@@ -53,7 +32,6 @@ namespace GameScenes
 	static constexpr float T_RESET = 31.0f;
 
 
-	// ── Gyroscope state ───────────────────────────────────────
 
 	struct GyroState
 	{
@@ -68,7 +46,7 @@ namespace GameScenes
 		};
 
 		static constexpr int NUM_RINGS = 6;
-		static constexpr int MAX_SPHERES = 6 * 167 + 1;  // 1003
+		static constexpr int MAX_SPHERES = 6 * 167 + 1;
 
 		Ring rings[NUM_RINGS] = {
 			{  0.00f,       0.00f,       0.30f,  167, 0.42f, 0 },
@@ -82,7 +60,7 @@ namespace GameScenes
 		float gimbalPrecession[3] = { 0.12f, 0.10f, 0.14f };
 
 		float time = 0.0f;
-		float cycleTime = 0.0f;   // resets each loop
+		float cycleTime = 0.0f;
 		bool  initialized = false;
 		float flickerPhase = 0.0f;
 		GyroPhase phase = GYRO_ORDER;
@@ -93,18 +71,16 @@ namespace GameScenes
 		float globalSpeed = 1.0f;
 		float precessionSpeed = 1.0f;
 
-		// Chaos state — per-sphere velocity for collapse phase
 		std::vector<float3> chaosVelocity;
 		std::vector<float3> chaosOffset;
 		bool chaosInitialized = false;
 		float collapseTime = 0.0f;
 
-		// Animation overrides (driven by phase logic)
-		float animOrbitMul = 1.0f;   // orbit speed multiplier
-		float animPrecessMul = 1.0f;   // precession speed multiplier
-		float animLockBlend = 0.0f;   // 0=free, 1=locked (middle→outer)
-		float animPanicWobble = 0.0f;   // oscillation amplitude during lock
-		float animRadiusDecay = 1.0f;   // 1=normal, >1=expanding (collapse)
+		float animOrbitMul = 1.0f;
+		float animPrecessMul = 1.0f;
+		float animLockBlend = 0.0f;
+		float animPanicWobble = 0.0f;
+		float animRadiusDecay = 1.0f;
 
 		std::vector<uint> sphereMaterials;
 
@@ -135,20 +111,18 @@ namespace GameScenes
 			if (chaosInitialized) return;
 			int total = 0;
 			for (int i = 0; i < NUM_RINGS; i++) total += rings[i].count;
-			total++; // center sphere
+			total++;
 
 			chaosVelocity.resize(total);
 			chaosOffset.resize(total);
 			uint seed = 1234;
 			for (int i = 0; i < total; i++)
 			{
-				// Random outward drift + tumble
 				chaosVelocity[i] = float3(
 					(RandomFloat(seed) - 0.5f) * 0.15f,
 					(RandomFloat(seed) - 0.5f) * 0.15f,
 					(RandomFloat(seed) - 0.5f) * 0.15f
 				);
-				// Add slight downward gravity feel
 				chaosVelocity[i].y -= 0.03f;
 				chaosOffset[i] = float3(0, 0, 0);
 			}
@@ -178,7 +152,6 @@ namespace GameScenes
 	};
 
 
-	// ── Setup materials ───────────────────────────────────────
 
 	inline void SetupGyroscopeMaterials(Tmpl8::Scene& scene)
 	{
@@ -220,7 +193,6 @@ namespace GameScenes
 	}
 
 
-	// ── Smooth step helper ────────────────────────────────────
 	inline float smoothstep(float a, float b, float t)
 	{
 		float x = (t - a) / (b - a);
@@ -229,7 +201,6 @@ namespace GameScenes
 	}
 
 
-	// ── Rebuild sphere positions ──────────────────────────────
 
 	inline void RebuildGyroscopeSpheres(
 		Tmpl8::Scene& scene,
@@ -241,28 +212,21 @@ namespace GameScenes
 		const float t = state.time;
 		int sphereIdx = 0;
 
-		// ── Gimbal angles (nested) ────────────────────────────
 		float aY = t * state.gimbalPrecession[0] * state.precessionSpeed * state.animPrecessMul;
 		float aX = t * state.gimbalPrecession[1] * state.precessionSpeed * state.animPrecessMul;
 		float aZ = t * state.gimbalPrecession[2] * state.precessionSpeed * state.animPrecessMul;
 
-		// ── Gimbal lock: ALL three axes collapse to same plane ──
-		// True gimbal lock = all rings coplanar. Middle and inner
-		// both converge toward outer's orientation, losing all DOF.
 		if (state.animLockBlend > 0.0f)
 		{
 			float blend = state.animLockBlend;
-			// Middle (X) collapses toward zero (aligns with outer's plane)
 			aX = aX * (1.0f - blend) + 0.0f * blend;
-			// Inner (Z) collapses toward zero (aligns with outer's plane)
 			aZ = aZ * (1.0f - blend) + 0.0f * blend;
 		}
 
-		// ── Panic wobble: violent oscillation during lock ──────
 		if (state.animPanicWobble > 0.0f)
 		{
 			float w = state.animPanicWobble;
-			float freq = t * 12.0f;  // fast oscillation
+			float freq = t * 12.0f;
 			aX += w * sinf(freq * 2.1f);
 			aY += w * sinf(freq * 1.7f + 1.0f);
 			aZ += w * sinf(freq * 3.3f + 2.0f);
@@ -278,8 +242,6 @@ namespace GameScenes
 			const int g = ring.gimbal;
 			const float radius = ring.radius * state.animRadiusDecay;
 
-			// During gimbal lock, blend ALL base tilts toward the outer
-			// gimbal's plane (tiltX=0, tiltZ=0) — true coplanar collapse
 			float bTiltX = ring.tiltX;
 			float bTiltZ = ring.tiltZ;
 			if (state.animLockBlend > 0.0f)
@@ -300,7 +262,6 @@ namespace GameScenes
 				float py = 0.0f;
 				float pz = sinf(angle) * radius;
 
-				// Base tilt
 				float ty = py * cx - pz * sx;
 				float tz = py * sx + pz * cx;
 				py = ty; pz = tz;
@@ -308,7 +269,6 @@ namespace GameScenes
 				ty = px * sz + py * cz;
 				px = tx; py = ty;
 
-				// Nested gimbal chain
 				tx = px * cyG + pz * syG;
 				tz = -px * syG + pz * cyG;
 				px = tx; pz = tz;
@@ -328,7 +288,6 @@ namespace GameScenes
 
 				float3 pos = center + float3(px, py, pz);
 
-				// Apply chaos offset during collapse
 				if (state.chaosInitialized && sphereIdx < (int)state.chaosOffset.size())
 					pos += state.chaosOffset[sphereIdx];
 
@@ -341,7 +300,6 @@ namespace GameScenes
 			}
 		}
 
-		// Center sphere
 		float3 centerPos = center;
 		if (state.chaosInitialized && sphereIdx < (int)state.chaosOffset.size())
 			centerPos += state.chaosOffset[sphereIdx];
@@ -356,9 +314,6 @@ namespace GameScenes
 	}
 
 
-	// ============================================================
-	// Scene definition
-	// ============================================================
 
 	inline SceneDef GyroscopeShowcase()
 	{
@@ -400,7 +355,6 @@ namespace GameScenes
 
 		auto gyro = std::make_shared<GyroState>();
 
-		// ── Tick — phase-driven animation ─────────────────────
 		s.tickCallback = [gyro](SceneDef& def, Tmpl8::Scene& scene,
 			float deltaTime, std::function<void()> resetAcc)
 			{
@@ -419,7 +373,6 @@ namespace GameScenes
 				gyro->cycleTime += dt;
 				float ct = gyro->cycleTime;
 
-				// ── Phase state machine ───────────────────────────
 				if (ct >= T_RESET)
 				{
 					gyro->ResetCycle();
@@ -428,7 +381,6 @@ namespace GameScenes
 
 				if (ct < T_CONVERGE)
 				{
-					// ── ORDER: clean rotation, moderate speed ─────
 					gyro->phase = GYRO_ORDER;
 					gyro->animOrbitMul = 1.5f;
 					gyro->animPrecessMul = 1.0f;
@@ -438,36 +390,32 @@ namespace GameScenes
 				}
 				else if (ct < T_LOCK)
 				{
-					// ── CONVERGE: middle gimbal drifts toward outer
 					gyro->phase = GYRO_CONVERGE;
 					float p = (ct - T_CONVERGE) / (T_LOCK - T_CONVERGE);
 					gyro->animLockBlend = smoothstep(0.0f, 1.0f, p);
-					gyro->animOrbitMul = 1.5f + 0.5f * p;  // slightly faster
+					gyro->animOrbitMul = 1.5f + 0.5f * p;
 					gyro->animPrecessMul = 1.0f + 0.5f * p;
 				}
 				else if (ct < T_SPINOUT)
 				{
-					// ── GIMBAL LOCK: violent oscillation ──────────
 					gyro->phase = GYRO_LOCK;
 					float p = (ct - T_LOCK) / (T_SPINOUT - T_LOCK);
 					gyro->animLockBlend = 1.0f;
-					gyro->animPanicWobble = 0.3f + 0.7f * p;  // growing panic
-					gyro->animOrbitMul = 2.0f + 3.0f * p;   // accelerating
+					gyro->animPanicWobble = 0.3f + 0.7f * p;
+					gyro->animOrbitMul = 2.0f + 3.0f * p;
 					gyro->animPrecessMul = 1.5f + 2.0f * p;
 				}
 				else if (ct < T_FREEZE)
 				{
-					// ── SPIN OUT: uncontrollable speed ────────────
 					gyro->phase = GYRO_SPINOUT;
 					float p = (ct - T_SPINOUT) / (T_FREEZE - T_SPINOUT);
-					gyro->animLockBlend = 1.0f - 0.3f * p;  // partially breaks free
-					gyro->animPanicWobble = 1.0f + 1.5f * p;   // maximum wobble
-					gyro->animOrbitMul = 5.0f + 10.0f * p;  // insane speed
+					gyro->animLockBlend = 1.0f - 0.3f * p;
+					gyro->animPanicWobble = 1.0f + 1.5f * p;
+					gyro->animOrbitMul = 5.0f + 10.0f * p;
 					gyro->animPrecessMul = 3.5f + 5.0f * p;
 				}
 				else if (ct < T_COLLAPSE)
 				{
-					// ── FREEZE: sudden deceleration to stop ───────
 					gyro->phase = GYRO_FREEZE;
 					float p = (ct - T_FREEZE) / (T_COLLAPSE - T_FREEZE);
 					float brake = 1.0f - smoothstep(0.0f, 1.0f, p);
@@ -478,7 +426,6 @@ namespace GameScenes
 				}
 				else
 				{
-					// ── COLLAPSE: orbits decay, spheres scatter ───
 					gyro->phase = GYRO_COLLAPSE;
 					gyro->animOrbitMul = 0.0f;
 					gyro->animPrecessMul = 0.0f;
@@ -488,26 +435,21 @@ namespace GameScenes
 					gyro->InitChaos();
 					gyro->collapseTime += dt;
 
-					// Accelerate chaos over time
 					float chaos_t = gyro->collapseTime;
 					float accel = 1.0f + chaos_t * 0.5f;
 					for (int i = 0; i < (int)gyro->chaosOffset.size(); i++)
 					{
 						gyro->chaosOffset[i] += gyro->chaosVelocity[i] * dt * accel;
-						// Add slight gravity
 						gyro->chaosVelocity[i].y -= 0.02f * dt;
 					}
 
-					// Radius slowly expands (orbits "unravel")
 					gyro->animRadiusDecay = 1.0f + chaos_t * 0.3f;
 				}
 
-				// ── Flicker — intensity follows phase ─────────────
 				gyro->flickerPhase += dt;
 				float basePulse = 0.4f + 0.6f * powf(
 					0.5f * (1.0f + sinf(gyro->flickerPhase * 2.0f * PI / 0.8f)), 2.0f);
 
-				// During panic/spinout, flicker gets erratic
 				float flickerMul = 1.0f;
 				if (gyro->phase == GYRO_LOCK || gyro->phase == GYRO_SPINOUT)
 				{
@@ -516,11 +458,10 @@ namespace GameScenes
 				}
 				else if (gyro->phase == GYRO_FREEZE)
 				{
-					flickerMul = 0.3f; // dims during freeze
+					flickerMul = 0.3f;
 				}
 				else if (gyro->phase == GYRO_COLLAPSE)
 				{
-					// Dying flicker — fading out
 					float fade = 1.0f - gyro->collapseTime / (T_RESET - T_COLLAPSE);
 					flickerMul = max(0.0f, fade * 0.5f);
 				}
@@ -533,23 +474,20 @@ namespace GameScenes
 				centerMat.emission = float3(r, g, b);
 				centerMat.albedo = float3(r, g, b);
 
-				// ── Rebuild ───────────────────────────────────────
 				RebuildGyroscopeSpheres(scene, *gyro);
 				if (resetAcc) resetAcc();
 			};
 
-		// ── UI ────────────────────────────────────────────────
 		s.uiCallback = [gyro](SceneDef& def, Tmpl8::Scene& scene,
 			std::function<void()> resetAcc)
 			{
 				if (!ImGui::CollapsingHeader("Gyroscope", ImGuiTreeNodeFlags_DefaultOpen))
 					return;
 
-				// Phase name
 				static const char* phaseNames[] = {
 					"ORDER", "CONVERGE", "GIMBAL LOCK", "SPIN OUT", "FREEZE", "COLLAPSE"
 				};
-				ImVec4 phaseColor = ImVec4(0.3f, 0.8f, 0.3f, 1.0f); // green = order
+				ImVec4 phaseColor = ImVec4(0.3f, 0.8f, 0.3f, 1.0f);
 				if (gyro->phase == GYRO_CONVERGE) phaseColor = ImVec4(0.9f, 0.7f, 0.2f, 1.0f);
 				if (gyro->phase == GYRO_LOCK)     phaseColor = ImVec4(0.9f, 0.3f, 0.1f, 1.0f);
 				if (gyro->phase == GYRO_SPINOUT)  phaseColor = ImVec4(1.0f, 0.1f, 0.1f, 1.0f);
@@ -560,7 +498,6 @@ namespace GameScenes
 				ImGui::SameLine();
 				ImGui::TextDisabled("%.1f / %.0fs", gyro->cycleTime, T_RESET);
 
-				// Progress bar
 				ImGui::ProgressBar(gyro->cycleTime / T_RESET, ImVec2(-1, 3));
 
 				ImGui::Text("%d spheres  |  cycle t = %.1fs",
@@ -630,4 +567,4 @@ namespace GameScenes
 		return s;
 	}
 
-} // namespace GameScenes
+}
