@@ -270,19 +270,9 @@ void Renderer::Init()
         }
     }
 
-    const float3 orbitCenter = float3(0.5f, 0.5f, 0.5f);
-    constexpr float radius = 2.f;
-    cameraSpline.points =
-    {
-        orbitCenter + float3(radius, 0,      0),
-        orbitCenter + float3(0,      0,  radius),
-        orbitCenter + float3(-radius, 0,      0),
-        orbitCenter + float3(0,      0, -radius),
-        orbitCenter + float3(radius, 0,      0)
-    };
     cameraSpline.BuildArcLengthTable();
     cameraFollower.spline = &cameraSpline;
-    cameraFollower.speed = 0.2f;
+    cameraFollower.speed = sceneManager.Active().splineSpeed;
     cameraFollower.loop = true;
 
     GameScenes::RegisterAllScenes(sceneManager);
@@ -310,7 +300,7 @@ void Renderer::Init()
             cameraSpline.AddPoint(p);
         cameraSpline.BuildArcLengthTable();
         cameraFollower.spline = &cameraSpline;
-        cameraFollower.speed = 0.15f;
+        cameraFollower.speed = sceneManager.Active().splineSpeed;
         cameraFollower.loop = true;
         useSplineCamera = true;
     }
@@ -442,7 +432,7 @@ void Renderer::Tick(float deltaTime)
                 cameraSpline.AddPoint(p);
             cameraSpline.BuildArcLengthTable();
             cameraFollower.spline = &cameraSpline;
-            cameraFollower.speed = 0.15f;
+            cameraFollower.speed = sceneManager.Active().splineSpeed;
             cameraFollower.loop = true;
             useSplineCamera = true;
         }
@@ -480,11 +470,17 @@ void Renderer::Tick(float deltaTime)
 
     float dt = deltaTime * 0.001f;
 
-    if (useSplineCamera)
+    if (useSplineCamera && sceneManager.Active().splineEnabled)
     {
         cameraFollower.Update(dt);
         camera.camPos = cameraFollower.position;
         camera.camTarget = orbitCenter;
+    }
+    else if (useSplineCamera && !sceneManager.Active().splineEnabled)
+    {
+        // scene has locked the camera — apply its override
+        camera.camPos = sceneManager.Active().camPos;
+        camera.camTarget = sceneManager.Active().camTarget;
     }
 
     if (lights.directionals.size() >= 2)
@@ -568,7 +564,8 @@ void Renderer::Tick(float deltaTime)
     }
 
     auto& bm = GameScenes::GetBrickmapState();
-    if (bm && useSplineCamera)
+    if (bm && useSplineCamera && sceneManager.HasActive()
+        && strcmp(sceneManager.Active().name, "Brickmap") == 0)
         cameraFollower.speed = bm->camSpeedRequest;
 
     if (sceneManager.HasActive() && sceneManager.Active().tickCallback)

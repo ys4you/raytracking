@@ -158,7 +158,9 @@
     <ClCompile Include="VoxelFactory.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="HelixScene.h" />
     <ClInclude Include="OrbitCloudScene.h" />
+    <ClInclude Include="OutroShowcase.h" />
     <ClInclude Include="PulseGridScene.h" />
     <ClInclude Include="BrickmapScene.h" />
     <ClInclude Include="EventSystem.h" />

@@ -56,6 +56,10 @@ public:
 	std::vector<AreaLight>        areaLights;
 	SpawnerState spawner;
 	std::vector<float3> splinePoints;
+	float splineSpeed = 0.15f;
+	bool splineEnabled = true;
+
+
 	std::function<void(SceneDef&, Tmpl8::Scene&, std::function<void()>)> uiCallback = nullptr;
 	std::function<void(SceneDef&, Tmpl8::Scene&, float, std::function<void()>)> tickCallback = nullptr;
 	std::function<void(Tmpl8::Scene&)> gridBuilder = nullptr;

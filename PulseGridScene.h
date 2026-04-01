@@ -257,6 +257,8 @@ namespace GameScenes
 		s.camPos = float3(0.28f, 0.60f, 0.20f);
 		s.camTarget = float3(0.50f, 0.47f, 0.50f);
 
+		s.splineSpeed = 0.12f;
+
 		s.splinePoints = {
 			float3(0.25f, 0.60f, 0.22f),
 			float3(0.50f, 0.60f, 0.15f),

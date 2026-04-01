@@ -54,7 +54,9 @@ namespace GameScenes
 		float bloomSpike = 0.0f;
 		float bloomDecay = 8.0f;
 
-		float durBeats[PHASE_COUNT] = { 3, 2, 3, 2, 3, 4, 2 };
+		float durBeats[PHASE_COUNT] = { 2, 2, 2, 2, 2, 2, 2 };
+		int   cycleBeats = 16; 
+
 		float snapBeats = 0.4f;
 
 		bool  paused = false;
@@ -90,8 +92,40 @@ namespace GameScenes
 			return std::clamp(localT, 0.0f, 1.0f);
 		}
 
+		void ApplyPreset(int beats)
+		{
+			cycleBeats = beats;
+			if (beats == 16)
+			{
+				// 4 bars of 4 at 79 BPM (~12.15s cycle)
+				// SOLID  SPLIT1  CULL1  SPLIT2  CULL2  HOLD  COLLAPSE
+				durBeats[SOLID] = 2;
+				durBeats[SPLIT_L1] = 2;
+				durBeats[CULL_L1] = 2;
+				durBeats[SPLIT_L2] = 2;
+				durBeats[CULL_L2] = 2;
+				durBeats[HOLD] = 4;
+				durBeats[COLLAPSE] = 2;
+			}
+			else // 24
+			{
+				// 6 bars of 4 at 79 BPM (~18.23s cycle)
+				durBeats[SOLID] = 4;
+				durBeats[SPLIT_L1] = 2;
+				durBeats[CULL_L1] = 4;
+				durBeats[SPLIT_L2] = 2;
+				durBeats[CULL_L2] = 4;
+				durBeats[HOLD] = 4;
+				durBeats[COLLAPSE] = 4;
+			}
+		}
+
+
 		void Seed()
 		{
+			if (durBeats[0] == 2 && durBeats[5] == 2)
+				ApplyPreset(16);
+
 			memset(fineGrid, 0, sizeof(fineGrid));
 			memset(coarseOcc, 0, sizeof(coarseOcc));
 
@@ -621,6 +655,28 @@ namespace GameScenes
 
 				if (ImGui::CollapsingHeader("Timing (beats)"))
 				{
+					int total = 0;
+					for (int i = 0; i < BrickmapState::PHASE_COUNT; i++)
+						total += (int)bm->durBeats[i];
+
+					ImGui::Text("Cycle: %d beats (%.1fs)", total, total * BM_BEAT);
+
+					if (ImGui::Button("16 beats"))
+					{
+						bm->ApplyPreset(16);
+						bm->Reset();
+						SyncBrickmap(*bm, scene, bm->GetRot());
+						if (reset) reset();
+					}
+					ImGui::SameLine();
+					if (ImGui::Button("24 beats"))
+					{
+						bm->ApplyPreset(24);
+						bm->Reset();
+						SyncBrickmap(*bm, scene, bm->GetRot());
+						if (reset) reset();
+					}
+
 					ImGui::SliderFloat("Solid##bm", &bm->durBeats[0], 1, 8, "%.0f");
 					ImGui::SliderFloat("Split L1##bm", &bm->durBeats[1], 1, 8, "%.0f");
 					ImGui::SliderFloat("Cull L1##bm", &bm->durBeats[2], 1, 8, "%.0f");

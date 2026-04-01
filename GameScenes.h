@@ -8,7 +8,9 @@
 #include "BrickmapScene.h"
 #include "PulseGridScene.h"
 #include "OrbitCloudScene.h"
+#include "HelixScene.h"
 
+#include "OutroShowcase.h"
 namespace GameScenes
 {
 
@@ -378,12 +380,13 @@ namespace GameScenes
 
 	inline void RegisterAllScenes(SceneManager& mgr)
 	{
-
+		mgr.AddScene(OutroShowcase());
 		mgr.AddScene(CubeShowcase());
 		mgr.AddScene(MengerShowcase());
 
 		mgr.AddScene(LivingCubeShowcase());
 		mgr.AddScene(PulseGridShowcase());
+		mgr.AddScene(HelixShowcase());
 		mgr.AddScene(OrbitCloudShowcase());
 
 
