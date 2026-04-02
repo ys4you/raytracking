@@ -28,7 +28,7 @@ const SceneDef& SceneManager::Active() const
 	return emptyScene;
 }
 
-void SceneManager::LoadScene(int id, Tmpl8::Scene& worldScene,
+void SceneManager::LoadScene(const int id, Tmpl8::Scene& worldScene,
 	Tmpl8::Camera& camera, Sky& sky,
 	SceneLights& lights)
 {
@@ -75,14 +75,14 @@ void SceneManager::LoadScene(int id, Tmpl8::Scene& worldScene,
 				voxCache[obj.voxFile] = firstObjIdx;
 			}
 
-			int objCount = (int)worldScene.voxelObjects.size() - firstObjIdx;
+			const int objCount = (int)worldScene.voxelObjects.size() - firstObjIdx;
 			for (int k = 0; k < objCount; k++)
 			{
-				int objIdx = firstObjIdx + k;
+				const int objIdx = firstObjIdx + k;
 
 				if (obj.flatten)
 				{
-					float3 rotRad = obj.rotation * (PI / 180.0f);
+					const float3 rotRad = obj.rotation * (PI / 180.0f);
 					VoxelFactory::FlattenInstance(
 						worldScene, objIdx,
 						obj.position, rotRad, obj.scale
@@ -136,8 +136,8 @@ void SceneManager::LoadScene(int id, Tmpl8::Scene& worldScene,
 			inst.worldAABBmin.x, inst.worldAABBmin.y, inst.worldAABBmin.z,
 			inst.worldAABBmax.x, inst.worldAABBmax.y, inst.worldAABBmax.z);
 
-		float3 aabbCenter = (inst.worldAABBmin + inst.worldAABBmax) * 0.5f;
-		float3 testD = normalize(aabbCenter - def.camPos);
+		const float3 aabbCenter = (inst.worldAABBmin + inst.worldAABBmax) * 0.5f;
+		const float3 testD = normalize(aabbCenter - def.camPos);
 		Tmpl8::Ray testRay(def.camPos, testD, 1e34f);
 		worldScene.FindNearest(testRay);
 		printf("    Test ray toward centre: t=%.6f  matIdx=%d  instIdx=%d  axis=%d\n",

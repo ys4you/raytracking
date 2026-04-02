@@ -44,13 +44,13 @@ namespace GameScenes
 	}
 
 	// remap p into a sub-window, return 0..1
-	inline float window(float p, float start, float end)
+	inline float window(const float p, const float start, const float end)
 	{
 		return std::clamp((p - start) / (end - start), 0.0f, 1.0f);
 	}
 
 	// lerp
-	inline float mix(float a, float b, float t) { return a + (b - a) * t; }
+	inline float mix(const float a, const float b, const float t) { return a + (b - a) * t; }
 
 
 	struct HelixState
@@ -94,32 +94,33 @@ namespace GameScenes
 
 
 		// ===================================================================
-		//  STAGGERED TIMELINE — each property on its own ease-out curve
-		//  with different start times so nothing moves in lockstep.
-		//  All curves are continuous. No events.
-		// ===================================================================
-
-		void Eval()
+			const float p = progress;
+			const float spinRate = mix(0.15f, 0.28f, easeOut(window(p, 0.0f, 0.60f)));
+			const float grp = mix(0.008f, 0.022f, easeOut(window(p, 0.0f, 0.70f)));
+		void Tick(const float dtMs)
+			const float dt = dtMs * 0.001f;
+		float GetScanAmp(const float t) const
 		{
-			float p = progress;
+			const float w = std::max(scanWidth, 0.02f);
 
-			// ---- RUNGS: fastest to fill, 0%–60% of duration ----
-			// 10 -> 28, aggressive ease-out so most appear in first 4s
-			rungReveal = mix(10.0f, 28.0f, easeOutQ(window(p, 0.0f, 0.60f)));
+			const float dU = fabsf(t - scanUp);
+			// Gaussian falloff keeps scan highlights soft instead of hard-edged.
+				const float dD = fabsf(t - scanDn);
+		float GetRadius(const float t) const
 
-			// ---- RADIUS: 0%–55% ----
-			radius = mix(12.0f, 24.0f, easeOut(window(p, 0.0f, 0.55f)));
+		float3 GetMicroDrift(const int strand, const float t) const
+			const float ph = driftPhase + t * 3.0f;
 
-			// ---- HEIGHT: slightly delayed, 2%–65% ----
-			height = mix(40.0f, 95.0f, easeOut(window(p, 0.02f, 0.65f)));
+		float3 GetCubeRot(const int strand, const float t) const
+			const float ph = driftPhase * 0.5f + t * 2.0f + strand * PI;
 
-			// ---- TWIST: 5%–70%, slower ramp gives the coiling visual time ----
-			twist = mix(1.0f, 3.5f, easeOut(window(p, 0.05f, 0.70f)));
+			const float scan = GetScanAmp(t);
+			const float amp = tiltAmp + scan * 8.0f;
 
-			// ---- CUBE SIZE: quick settle, 0%–35% ----
+			const float diff = rungReveal - (float)i;
 			cubeSize = mix(4.0f, 5.2f, easeOut(window(p, 0.0f, 0.35f)));
 
-			// ---- SECOND STRAND: 25%–40%, ~3s–5s mark ----
+			// ---- SECOND STRAND: 25%â€“40%, ~3sâ€“5s mark ----
 			float s2 = easeOut(window(p, 0.25f, 0.40f));
 			strand2Fade = s2;
 			strandCount = (p > 0.23f) ? 2 : 1;
@@ -217,7 +218,7 @@ namespace GameScenes
 		{
 			float ph = driftPhase * 0.5f + t * 2.0f + strand * PI;
 
-			// scan-proximate cubes tilt more — they're being "inspected"
+			// scan-proximate cubes tilt more â€” they're being "inspected"
 			float scan = GetScanAmp(t);
 			float amp = tiltAmp + scan * 8.0f;
 
@@ -339,7 +340,7 @@ namespace GameScenes
 			float y = center.y - hx.height * 0.5f + t * hx.height;
 			float theta = t * hx.twist * 2.0f * PI + hx.helixSpin;
 
-			float scan = hx.GetScanAmp(t);
+			const float scan = hx.GetScanAmp(t);
 
 			for (int strand = 0; strand < hx.strandCount; strand++)
 			{

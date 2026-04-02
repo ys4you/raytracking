@@ -24,9 +24,9 @@ namespace GameScenes
 		float speedY = 0.25f;
 		float speedZ = 0.08f;
 
-		void Tick(float deltaTimeMs)
+		void Tick(const float deltaTimeMs)
 		{
-			float dt = deltaTimeMs * 0.001f;
+			const float dt = deltaTimeMs * 0.001f;
 			angleX += speedX * dt;
 			angleY += speedY * dt;
 			angleZ += speedZ * dt;

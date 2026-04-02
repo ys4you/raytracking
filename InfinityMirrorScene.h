@@ -12,7 +12,7 @@ namespace GameScenes
 	static constexpr uint8_t PAL_ONEWAY = 246;
 
 
-	inline VoxelObject BuildInfinityMirrorBox(int size = 40)
+	inline VoxelObject BuildInfinityMirrorBox(const int size = 40)
 	{
 		std::vector<uint8_t> voxels(size * size * size, 0);
 
@@ -124,9 +124,9 @@ namespace GameScenes
 		int  boxObjIdx = -1;
 		float phase = 0.0f;
 
-		void Tick(float dtMs)
+		void Tick(const float dtMs)
 		{
-			float dt = dtMs * 0.001f;
+			const float dt = dtMs * 0.001f;
 			phase += 0.4f * dt;
 			if (phase > 2.0f * PI) phase -= 2.0f * PI;
 		}
@@ -183,7 +183,7 @@ namespace GameScenes
 				l.position = pos; l.color = col; l.enabled = true;
 				s.pointLights.push_back(l);
 			};
-		// very dim fill — just enough to see the box silhouette
+		// very dim fill â€” just enough to see the box silhouette
 		addLight(float3(0.5f, 0.85f, 0.5f), float3(0.03f, 0.025f, 0.04f));
 		addLight(float3(0.5f, 0.45f, 0.1f), float3(0.02f, 0.015f, 0.03f));
 

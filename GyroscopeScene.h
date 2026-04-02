@@ -32,7 +32,7 @@ namespace GameScenes
 
 	// --- Catmull-Rom helpers ---
 
-	inline float3 GyroCatmullRom(float3 p0, float3 p1, float3 p2, float3 p3, float t)
+	inline float3 GyroCatmullRom(const float3 p0, const float3 p1, const float3 p2, const float3 p3, const float t)
 	{
 		float t2 = t * t, t3 = t2 * t;
 		return 0.5f * (
@@ -43,7 +43,7 @@ namespace GameScenes
 			);
 	}
 
-	inline float3 GyroEvalSpline(const float3* pts, int nPts, float t01)
+	inline float3 GyroEvalSpline(const float3* pts, const int nPts, const float t01)
 	{
 		int segs = nPts - 3;
 		if (segs < 1) return pts[0];
@@ -59,7 +59,7 @@ namespace GameScenes
 
 	inline float3 GyroEstimateCamPos(
 		const std::vector<float3>& splinePts,
-		float elapsedTime)
+		const float elapsedTime)
 	{
 		if (splinePts.size() < 4) return float3(0.5f, 0.5f, 0.25f);
 
@@ -93,6 +93,7 @@ namespace GameScenes
 		if (lo == 0) return samples[0];
 
 		float segLen = cumLen[lo] - cumLen[lo - 1];
+		// Interpolate inside the located arc-length segment for near-constant camera speed.
 		float frac = (segLen > 0.0001f) ? (dist - cumLen[lo - 1]) / segLen : 0.0f;
 		return samples[lo - 1] * (1.0f - frac) + samples[lo] * frac;
 	}
@@ -195,9 +196,9 @@ namespace GameScenes
 		}
 		int TotalSpheres() const { return NumOrbitSpheres() + 1; }
 
-		float PhaseDuration(int p) const { return phaseBeats[p] * GYRO_BEAT; }
+		float PhaseDuration(const int p) const { return phaseBeats[p] * GYRO_BEAT; }
 
-		float PhaseStart(int p) const
+		float PhaseStart(const int p) const
 		{
 			float t = 0;
 			for (int i = 0; i < p; i++) t += phaseBeats[i] * GYRO_BEAT;
@@ -218,7 +219,7 @@ namespace GameScenes
 			return t;
 		}
 
-		void ApplyPreset(int beats)
+		void ApplyPreset(const int beats)
 		{
 			cyclePreset = beats;
 			if (beats == 32)
@@ -373,7 +374,7 @@ namespace GameScenes
 
 			float3 gather(0.5f, 0.5f, 0.5f);
 
-			// pass 0.03 units in front of camera — at 120 FOV screen half-width = 0.052
+			// pass 0.03 units in front of camera Â— at 120 FOV screen half-width = 0.052
 			float passDist = 0.03f;
 			float sweep = 0.15f; // how far right/left the sweep extends
 
@@ -382,11 +383,11 @@ namespace GameScenes
 			trailSpline[0] = gather + (gather - camPos) * 0.15f;
 			// P1: gather point (start)
 			trailSpline[1] = gather;
-			// P2: approach — come in from the right side
+			// P2: approach Â— come in from the right side
 			trailSpline[2] = camPos + camFwd * passDist * 3.0f + camRight * sweep * 1.5f;
-			// P3: wipe entry — right edge of screen, close to camera
+			// P3: wipe entry Â— right edge of screen, close to camera
 			trailSpline[3] = camPos + camFwd * passDist + camRight * sweep * 0.3f;
-			// P4: wipe exit — left edge of screen, still close
+			// P4: wipe exit Â— left edge of screen, still close
 			trailSpline[4] = camPos + camFwd * passDist - camRight * sweep * 0.3f;
 			// P5: depart left
 			trailSpline[5] = camPos + camFwd * passDist * 3.0f - camRight * sweep * 1.5f;

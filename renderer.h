@@ -29,28 +29,28 @@ namespace Tmpl8
 	{
 	public:
 		/// <summary>Returns squared vector length.</summary>
-		inline float length2(const float3& v)
+		static inline float length2(const float3& v)
 		{
 			return v.x * v.x + v.y * v.y + v.z * v.z;
 		}
 		/// <summary>Samples a random point inside the unit sphere.</summary>
-		inline float3 RandomInUnitSphere()
+		static inline float3 RandomInUnitSphere()
 		{
 			float3 p;
 			do { p = 2.0f * float3(RandomFloat(), RandomFloat(), RandomFloat()) - float3(1, 1, 1); } while (length2(p) >= 1.0f);
 			return p;
 		}
 		/// <summary>Reflects a vector around a surface normal.</summary>
-		inline float3 reflect(const float3& v, const float3& n)
+		static inline float3 reflect(const float3& v, const float3& n)
 		{
 			return v - 2.0f * dot(v, n) * n;
 		}
 		/// <summary>Computes a refracted direction using Snell's law.</summary>
-		inline bool Refract(const float3& v, const float3& n, float ni_over_nt, float3& refracted)
+		static inline bool Refract(const float3& v, const float3& n, const float ni_over_nt, float3& refracted)
 		{
-			float3 uv = normalize(v);
-			float dt = dot(uv, n);
-			float discriminant = 1.0f - ni_over_nt * ni_over_nt * (1 - dt * dt);
+			const float3 uv = normalize(v);
+			const float dt = dot(uv, n);
+			const float discriminant = 1.0f - ni_over_nt * ni_over_nt * (1 - dt * dt);
 			if (discriminant > 0) {
 				refracted = ni_over_nt * (uv - n * dt) - n * sqrt(discriminant);
 				return true;
@@ -58,17 +58,18 @@ namespace Tmpl8
 			return false;
 		}
 		/// <summary>Approximates Fresnel reflectance with Schlick's model.</summary>
-		inline float Schlick(float cosine, float ref_idx)
+		static inline float Schlick(const float cosine, const float ref_idx)
 		{
 			float r0 = (1 - ref_idx) / (1 + ref_idx);
 			r0 = r0 * r0;
 			return r0 + (1 - r0) * powf(1 - cosine, 5);
 		}
 		/// <summary>Returns a blue-noise sample for pixel and frame indices.</summary>
-		float BlueNoise(int x, int y, int frame)
+		float BlueNoise(const int x, const int y, const int frame) const
 		{
-			int ix = (x + frame * 17) & (BN_SIZE - 1);
-			int iy = (y + frame * 31) & (BN_SIZE - 1);
+			// Bitmask wraps coordinates because BN_SIZE is a power of two.
+			const int ix = (x + frame * 17) & (BN_SIZE - 1);
+			const int iy = (y + frame * 31) & (BN_SIZE - 1);
 			return blueNoise[ix + iy * BN_SIZE] * (1.0f / 255.0f);
 		}
 

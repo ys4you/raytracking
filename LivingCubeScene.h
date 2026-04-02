@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "SceneManager.h"
 #include "VoxelFactory.h"
 #include "VoxelObject.h"
@@ -49,9 +49,9 @@ namespace GameScenes
 
 		int objBase = 0;
 
-		void TickRotation(float deltaTimeMs)
+		void TickRotation(const float deltaTimeMs)
 		{
-			float dt = deltaTimeMs * 0.001f;
+			const float dt = deltaTimeMs * 0.001f;
 			angleX += speedX * dt;
 			angleY += speedY * dt;
 			angleZ += speedZ * dt;
@@ -96,7 +96,7 @@ namespace GameScenes
 			ClassifyFates();
 		}
 
-		int CountNeighbors(int cx, int cy, int cz) const
+		int CountNeighbors(const int cx, const int cy, const int cz) const
 		{
 			int n = 0;
 			for (int dx = -1; dx <= 1; dx++)

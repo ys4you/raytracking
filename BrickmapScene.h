@@ -1,4 +1,4 @@
-
+﻿
 #pragma once
 #include "SceneManager.h"
 #include "VoxelFactory.h"
@@ -88,11 +88,12 @@ namespace GameScenes
 			if (globalCull <= 0.0f) return 0.0f;
 			if (globalCull >= 1.0f) return 1.0f;
 			float dist = manhattan(x, y, z, c) / maxDist;
+			// Delay culling for outer cells so removal appears to travel from center outward.
 			float localT = (globalCull - (1.0f - dist) * 0.4f) / 0.6f;
 			return std::clamp(localT, 0.0f, 1.0f);
 		}
 
-		void ApplyPreset(int beats)
+		void ApplyPreset(const int beats)
 		{
 			cycleBeats = beats;
 			if (beats == 16)
@@ -167,9 +168,9 @@ namespace GameScenes
 			return n;
 		}
 
-		void TickRotation(float dtMs)
+		void TickRotation(const float dtMs)
 		{
-			float dt = dtMs * 0.001f;
+			const float dt = dtMs * 0.001f;
 			angleX += speedX * dt;
 			angleY += speedY * dt;
 			angleZ += speedZ * dt;
@@ -183,13 +184,13 @@ namespace GameScenes
 				bloomSpike = 0.0f;
 		}
 
-		void TickPhase(float dtMs)
+		void TickPhase(const float dtMs)
 		{
 			if (paused) return;
 			prevPhase = phase;
 			phaseTimer += dtMs * 0.001f * speedMul;
 
-			float dur = durBeats[phase] * BM_BEAT;
+			const float dur = durBeats[phase] * BM_BEAT;
 			if (phaseTimer >= dur)
 			{
 				phaseTimer = 0.0f;
@@ -211,7 +212,7 @@ namespace GameScenes
 					bloomSpike = 0.4f;
 			}
 
-			float snap = easeOut(phaseTimer / (snapBeats * BM_BEAT));
+			const float snap = easeOut(phaseTimer / (snapBeats * BM_BEAT));
 
 			switch (phase)
 			{

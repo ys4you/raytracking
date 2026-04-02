@@ -43,7 +43,7 @@ float PhysicsBall::ProbeTerrainContact(Scene& scene, float3& outNormal) const
 		if (probe.voxel == 0) continue;
 		if (probe.t >= radius) continue;
 
-		float penetration = radius - probe.t;
+		const float penetration = radius - probe.t;
 		if (penetration > maxPenetration)
 			maxPenetration = penetration;
 
@@ -56,7 +56,7 @@ float PhysicsBall::ProbeTerrainContact(Scene& scene, float3& outNormal) const
 		outNormal += hitNormal * penetration;
 	}
 
-	float len = length(outNormal);
+	const float len = length(outNormal);
 	if (len > 1e-6f)
 		outNormal *= (1.0f / len);
 	else
@@ -68,18 +68,18 @@ float PhysicsBall::ProbeTerrainContact(Scene& scene, float3& outNormal) const
 
 float PhysicsBall::SweepTest(Scene& scene, float dt) const
 {
-	float speed = length(velocity);
+	const float speed = length(velocity);
 	if (speed < 1e-6f) return 0.0f;
 
-	float travelDist = speed * dt;
-	float3 dir = velocity * (1.0f / speed);
+	const float travelDist = speed * dt;
+	const float3 dir = velocity * (1.0f / speed);
 
 	Ray ccd(position, dir, travelDist + radius);
 	scene.FindNearest(ccd);
 
 	if (ccd.voxel == 0) return travelDist;
 
-	float safe = ccd.t - radius;
+	const float safe = ccd.t - radius;
 	return max(0.0f, safe);
 }
 
@@ -93,15 +93,15 @@ void PhysicsBall::Depenetrate(float penetration, const float3& normal)
 
 void PhysicsBall::IntegrateRotation(float dt)
 {
-	float speed = length(angularVel);
+	const float speed = length(angularVel);
 	if (speed < 1e-6f) return;
 
-	float angle = speed * dt;
-	float3 axis = angularVel * (1.0f / speed);
+	const float angle = speed * dt;
+	const float3 axis = angularVel * (1.0f / speed);
 
-	float c = cosf(angle);
-	float s = sinf(angle);
-	float t = 1.0f - c;
+	const float c = cosf(angle);
+	const float s = sinf(angle);
+	const float t = 1.0f - c;
 
 	mat4 rot;
 	rot.cell[0] = t * axis.x * axis.x + c;
@@ -126,13 +126,13 @@ void PhysicsBall::Update(float dt, Scene& scene)
 {
 	velocity += GRAVITY * dt;
 
-	float safeDist = SweepTest(scene, dt);
-	float speed = length(velocity);
-	float fullDist = speed * dt;
+	const float safeDist = SweepTest(scene, dt);
+	const float speed = length(velocity);
+	const float fullDist = speed * dt;
 
 	if (safeDist < fullDist && speed > 1e-6f)
 	{
-		float3 dir = velocity * (1.0f / speed);
+		const float3 dir = velocity * (1.0f / speed);
 		position += dir * safeDist;
 
 		Ray ccd(position, dir, radius * 2.0f);
@@ -146,7 +146,7 @@ void PhysicsBall::Update(float dt, Scene& scene)
 			else if (ccd.axis == 2) hitN = float3(0, 0, dir.z < 0 ? 1.f : -1.f);
 		}
 
-		float vn = dot(velocity, hitN);
+		const float vn = dot(velocity, hitN);
 		if (vn < 0)
 			velocity -= (1.0f + restitution) * vn * hitN;
 	}
@@ -162,7 +162,7 @@ void PhysicsBall::Update(float dt, Scene& scene)
 	{
 		Depenetrate(penetration, contactNormal);
 
-		float vn = dot(velocity, contactNormal);
+		const float vn = dot(velocity, contactNormal);
 
 		if (vn < 0)
 		{
@@ -184,18 +184,19 @@ void PhysicsBall::Update(float dt, Scene& scene)
 
 		if (onGround)
 		{
-			float3 vTangent = velocity - dot(velocity, contactNormal) * contactNormal;
-			float tangentSpeed = length(vTangent);
+			const float3 vTangent = velocity - dot(velocity, contactNormal) * contactNormal;
+			const float tangentSpeed = length(vTangent);
 
 			if (tangentSpeed > 1e-6f)
 			{
-				float frictionAccel = rollingFriction * fabsf(dot(GRAVITY, contactNormal));
-				float newSpeed = max(0.0f, tangentSpeed - frictionAccel * dt);
+				const float frictionAccel = rollingFriction * fabsf(dot(GRAVITY, contactNormal));
+				const float newSpeed = max(0.0f, tangentSpeed - frictionAccel * dt);
 				velocity = (vTangent * (newSpeed / tangentSpeed))
 					+ dot(velocity, contactNormal) * contactNormal;
 			}
 
-			float3 gravParallel = GRAVITY - dot(GRAVITY, contactNormal) * contactNormal;
+			// Remove the normal component so gravity only accelerates along the slope.
+			const float3 gravParallel = GRAVITY - dot(GRAVITY, contactNormal) * contactNormal;
 			velocity += gravParallel * dt;
 		}
 	}
@@ -205,8 +206,8 @@ void PhysicsBall::Update(float dt, Scene& scene)
 		velocity -= velocity * airDrag * dt;
 	}
 
-	float lo = radius + 0.001f;
-	float hi = 1.0f - radius - 0.001f;
+	const float lo = radius + 0.001f;
+	const float hi = 1.0f - radius - 0.001f;
 	for (int a = 0; a < 3; a++)
 	{
 		float& p = (a == 0) ? position.x : (a == 1) ? position.y : position.z;
@@ -217,7 +218,7 @@ void PhysicsBall::Update(float dt, Scene& scene)
 
 	if (onGround)
 	{
-		float3 vTangent = velocity - dot(velocity, contactNormal) * contactNormal;
+		const float3 vTangent = velocity - dot(velocity, contactNormal) * contactNormal;
 		angularVel = cross(contactNormal, vTangent) / radius;
 	}
 

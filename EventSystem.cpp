@@ -18,7 +18,7 @@ void EventSystem::SetTrack(ma_sound* sound)
 	if (trackedSound)
 	{
 		float len = 0;
-		ma_result result = ma_sound_get_length_in_seconds(trackedSound, &len);
+		const ma_result result = ma_sound_get_length_in_seconds(trackedSound, &len);
 		if (result == MA_SUCCESS && len > 0)
 			cachedTrackLength = len;
 		else
@@ -53,7 +53,7 @@ void EventSystem::Tick(float /*deltaTimeMs*/)
 	if (!trackedSound) return;
 	if (!ma_sound_is_playing(trackedSound)) return;
 
-	float cursor = GetPlaybackTime();
+	const float cursor = GetPlaybackTime();
 
 	if (cursor < lastCursor - 0.5f)
 		Reset();
@@ -107,7 +107,6 @@ void EventSystem::SortEvents()
 }
 
 
-//comment
 bool EventSystem::Save(const char* path) const
 {
 	FILE* f = fopen(path, "wb");
@@ -115,14 +114,14 @@ bool EventSystem::Save(const char* path) const
 
 	fwrite("EVTS", 1, 4, f);
 
-	uint32_t count = (uint32_t)events.size();
+	const uint32_t count = (uint32_t)events.size();
 	fwrite(&count, sizeof(uint32_t), 1, f);
 
 	for (const auto& e : events)
 	{
 		fwrite(&e.time, sizeof(float), 1, f);
 
-		uint32_t typeLen = (uint32_t)e.type.size();
+		const uint32_t typeLen = (uint32_t)e.type.size();
 		fwrite(&typeLen, sizeof(uint32_t), 1, f);
 		fwrite(e.type.data(), 1, typeLen, f);
 
@@ -130,7 +129,7 @@ bool EventSystem::Save(const char* path) const
 		fwrite(&e.param2, sizeof(float), 1, f);
 		fwrite(&e.param3, sizeof(float), 1, f);
 
-		uint32_t strLen = (uint32_t)e.strParam.size();
+		const uint32_t strLen = (uint32_t)e.strParam.size();
 		fwrite(&strLen, sizeof(uint32_t), 1, f);
 		fwrite(e.strParam.data(), 1, strLen, f);
 	}
@@ -206,8 +205,8 @@ void EventSystem::SetSpeed(float speed)
 void EventSystem::SeekTo(float seconds)
 {
 	if (!trackedSound) return;
-	ma_uint32 sampleRate = ma_engine_get_sample_rate(ma_sound_get_engine(trackedSound));
-	ma_uint64 frame = (ma_uint64)(seconds * sampleRate);
+	const ma_uint32 sampleRate = ma_engine_get_sample_rate(ma_sound_get_engine(trackedSound));
+	const ma_uint64 frame = (ma_uint64)(seconds * sampleRate);
 	ma_sound_seek_to_pcm_frame(trackedSound, frame);
 	Reset();
 	lastCursor = seconds;
@@ -220,9 +219,9 @@ void EventSystem::UI(std::function<void()> resetAccumulator)
 
 	ImGui::Checkbox("Enabled", &enabled);
 
-	float trackLength = cachedTrackLength;
-	float cursor = GetPlaybackTime();
-	bool playing = IsPlaying();
+	const float trackLength = cachedTrackLength;
+	const float cursor = GetPlaybackTime();
+	const bool playing = IsPlaying();
 
 	ImGui::Text("Playback: %.2fs / %.1fs", cursor, trackLength);
 	ImGui::SameLine();
@@ -253,8 +252,8 @@ void EventSystem::UI(std::function<void()> resetAccumulator)
 
 	ImGui::SliderFloat("Zoom", &zoomLevel, 20.0f, 500.0f, "%.0f px/s");
 
-	float timelineWidth = trackLength * zoomLevel;
-	float availWidth = ImGui::GetContentRegionAvail().x;
+	const float timelineWidth = trackLength * zoomLevel;
+	const float availWidth = ImGui::GetContentRegionAvail().x;
 
 	ImGui::BeginChild("##timeline", ImVec2(0, 80), true, ImGuiWindowFlags_HorizontalScrollbar);
 
