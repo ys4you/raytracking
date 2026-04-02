@@ -231,6 +231,7 @@ void Renderer::Init()
 {
     std::cout << "screen width: " << SCRWIDTH << " screen height: " << SCRHEIGHT << std::endl;
 
+    RunAllTests();
     sampleCountPerPixel = new int[SCRWIDTH * SCRHEIGHT]();
 
     Surface* bn = new Surface("assets/BlueNoise256x256.png");
@@ -319,18 +320,28 @@ void Renderer::Init()
         fadeOpacity = 1.0f;
         fadeTarget = 0.0f;
         fadeSpeed = 1.0f / duration;
-        fadeColor = float3(e.param2, e.param3, 0);
-        if (fadeColor.x == 0 && fadeColor.y == 0)
-            fadeColor = float3(0, 0, 0);
+        if (e.strParam == "white")
+            fadeColor = float3(1, 1, 1);
+        else
+        {
+            fadeColor = float3(e.param2, e.param3, 0);
+            if (fadeColor.x == 0 && fadeColor.y == 0)
+                fadeColor = float3(0, 0, 0);
+        }
         });
 
     eventSystem.RegisterHandler("fade_out", [this](const TimeEvent& e) {
         float duration = e.param1 > 0.0f ? e.param1 : 1.0f;
         fadeTarget = 1.0f;
         fadeSpeed = 1.0f / duration;
-        fadeColor = float3(e.param2, e.param3, 0);
-        if (fadeColor.x == 0 && fadeColor.y == 0)
-            fadeColor = float3(0, 0, 0);
+        if (e.strParam == "white")
+            fadeColor = float3(1, 1, 1);
+        else
+        {
+            fadeColor = float3(e.param2, e.param3, 0);
+            if (fadeColor.x == 0 && fadeColor.y == 0)
+                fadeColor = float3(0, 0, 0);
+        }
         });
 
     eventSystem.RegisterHandler("scene_change", [this](const TimeEvent& e) {
@@ -383,8 +394,13 @@ void Renderer::Init()
         }
         else if (e.strParam == "bloom")
         {
-            bloomIntensity = e.param1;
-            bloomThreshold = e.param2 > 0 ? e.param2 : bloomThreshold;
+            bloomFadeActive = true;
+            bloomFadeTimer = 0.0f;
+            bloomFadeDuration = e.param3 > 0 ? e.param3 : 0.001f;
+            bloomIntensityFrom = bloomIntensity;
+            bloomIntensityTo = e.param1;
+            bloomThresholdFrom = bloomThreshold;
+            bloomThresholdTo = e.param2 > 0 ? e.param2 : bloomThreshold;
         }
         else if (e.strParam == "sun")
         {
@@ -510,6 +526,18 @@ void Renderer::Tick(float deltaTime)
         ResetAccumulator();
     }
 
+    if (bloomFadeActive)
+    {
+        bloomFadeTimer += dt;
+        float t = clamp(bloomFadeTimer / bloomFadeDuration, 0.0f, 1.0f);
+        float smooth = t * t * (3.0f - 2.0f * t);
+        bloomIntensity = bloomIntensityFrom + (bloomIntensityTo - bloomIntensityFrom) * smooth;
+        bloomThreshold = bloomThresholdFrom + (bloomThresholdTo - bloomThresholdFrom) * smooth;
+
+        if (t >= 1.0f)
+            bloomFadeActive = false;
+    } 
+
     if (lightColorsStored)
     {
         for (int i = 0; i < (int)lights.points.size() && i < (int)originalPointLightColors.size(); i++)
@@ -552,14 +580,18 @@ void Renderer::Tick(float deltaTime)
 
     {
         auto& bm = GameScenes::GetBrickmapState();
-        if (bm && bm->bloomSpike > 0.01f)
+        if (bm && sceneManager.HasActive()
+            && strcmp(sceneManager.Active().name, "Brickmap") == 0)
         {
-            bloomIntensity = 0.3f + bm->bloomSpike;
-            ResetAccumulator();
-        }
-        else
-        {
-            bloomIntensity = 0.3f;
+            if (bm->bloomSpike > 0.01f)
+            {
+                bloomIntensity = 0.3f + bm->bloomSpike;
+                ResetAccumulator();
+            }
+            else
+            {
+                bloomIntensity = 0.3f;
+            }
         }
     }
 

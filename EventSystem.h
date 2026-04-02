@@ -85,5 +85,5 @@ private:
 	float zoomLevel     = 100.0f;
 	float scrollOffset  = 0.0f;
 
-	bool enabled = false;
+	bool enabled = true;
 };

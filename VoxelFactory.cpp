@@ -50,6 +50,7 @@ void VoxelFactory::CreateInstance(
     VoxelInstance inst(objectIndex, wsPos, rotRad, wsScale, localPivot);
     scene.voxelInstances.push_back(inst);
 }
+
 void VoxelFactory::FromVoxTransform(const ogt_vox_transform& T,
     float3& outPos, float3& outRot, float3& outScale, float3 pivot)
 {

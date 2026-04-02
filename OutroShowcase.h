@@ -26,12 +26,79 @@ namespace GameScenes
 		GLYPH_O, GLYPH_R, GLYPH_D, GLYPH_E, GLYPH_R
 	};
 
-	static constexpr float OUT_BPM = 79.0f;
-	static constexpr float OUT_BEAT = 60.0f / OUT_BPM;
-	static constexpr int OUT_SPHERES = 1002;
-	static constexpr int OUT_LETTERS = 5;
+	static constexpr float OUTRO_BPM = 79.0f;
+	static constexpr float OUTRO_BEAT = 60.0f / OUTRO_BPM;
+	static constexpr int OUTRO_SPHERES = 1002;
+	static constexpr int OUTRO_LETTERS = 5;
 
-	// --- Catmull-Rom ---
+	// ---- Mini 5x7 font for credits ----
+
+	struct CreditGlyph { uint8_t rows[7]; };
+
+	inline const CreditGlyph* GetCreditGlyph(char ch)
+	{
+		static const CreditGlyph glyphs[] = {
+			{{0x0E, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0E}}, // 0  C
+			{{0x00, 0x00, 0x16, 0x19, 0x10, 0x10, 0x10}}, // 1  r
+			{{0x00, 0x00, 0x0E, 0x11, 0x1F, 0x10, 0x0E}}, // 2  e
+			{{0x00, 0x00, 0x0E, 0x01, 0x0F, 0x11, 0x0F}}, // 3  a
+			{{0x08, 0x08, 0x1C, 0x08, 0x08, 0x09, 0x06}}, // 4  t
+			{{0x01, 0x01, 0x0F, 0x11, 0x11, 0x11, 0x0F}}, // 5  d
+			{{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}}, // 6  space
+			{{0x10, 0x10, 0x1E, 0x11, 0x11, 0x11, 0x1E}}, // 7  b
+			{{0x00, 0x00, 0x11, 0x11, 0x0F, 0x01, 0x0E}}, // 8  y
+			{{0x00, 0x04, 0x00, 0x00, 0x00, 0x04, 0x00}}, // 9  :
+			{{0x11, 0x11, 0x0A, 0x04, 0x04, 0x04, 0x04}}, // 10 Y
+			{{0x00, 0x00, 0x0F, 0x10, 0x0E, 0x01, 0x1E}}, // 11 s
+			{{0x0E, 0x11, 0x10, 0x0E, 0x01, 0x11, 0x0E}}, // 12 S
+			{{0x04, 0x00, 0x0C, 0x04, 0x04, 0x04, 0x0E}}, // 13 i
+			{{0x02, 0x00, 0x06, 0x02, 0x02, 0x12, 0x0C}}, // 14 j
+			{{0x00, 0x00, 0x16, 0x19, 0x11, 0x11, 0x11}}, // 15 n
+			{{0x00, 0x00, 0x1A, 0x15, 0x15, 0x11, 0x11}}, // 16 m
+			{{0x00, 0x00, 0x11, 0x11, 0x11, 0x13, 0x0D}}, // 17 u
+			{{0x00, 0x00, 0x0E, 0x10, 0x10, 0x11, 0x0E}}, // 18 c
+			{{0x00, 0x00, 0x0E, 0x11, 0x11, 0x11, 0x0E}}, // 19 o
+			{{0x00, 0x00, 0x11, 0x11, 0x11, 0x0A, 0x04}}, // 20 v
+		};
+
+		switch (ch)
+		{
+		case 'C': return &glyphs[0];
+		case 'r': return &glyphs[1];
+		case 'e': return &glyphs[2];
+		case 'a': return &glyphs[3];
+		case 't': return &glyphs[4];
+		case 'd': return &glyphs[5];
+		case ' ': return &glyphs[6];
+		case 'b': return &glyphs[7];
+		case 'y': return &glyphs[8];
+		case ':': return &glyphs[9];
+		case 'Y': return &glyphs[10];
+		case 's': return &glyphs[11];
+		case 'S': return &glyphs[12];
+		case 'i': return &glyphs[13];
+		case 'j': return &glyphs[14];
+		case 'n': return &glyphs[15];
+		case 'm': return &glyphs[16];
+		case 'u': return &glyphs[17];
+		case 'c': return &glyphs[18];
+		case 'o': return &glyphs[19];
+		case 'v': return &glyphs[20];
+		default:  return &glyphs[6];
+		}
+	}
+
+	struct CreditSphere
+	{
+		float3 target;
+		float  revealTime;
+		float3 glitchOffset;
+		uint   seed;
+		bool   highlight = false;
+
+	};
+
+	// ---- Catmull-Rom helpers ----
 
 	inline float3 OutroCR(float3 p0, float3 p1, float3 p2, float3 p3, float t)
 	{
@@ -44,7 +111,6 @@ namespace GameScenes
 			);
 	}
 
-	// evaluate a spline with nPts control points at t in [0,1]
 	inline float3 OutroEval(const float3* pts, int nPts, float t)
 	{
 		int segs = nPts - 3;
@@ -60,26 +126,27 @@ namespace GameScenes
 		return t * t * (3.0f - 2.0f * t);
 	}
 
-
-	// --- Per sphere: 7-point spline defining its full journey ---
-
 	struct OutroSphere
 	{
 		int    letter;
-		float3 path[7];     // full Catmull-Rom path: screen -> bloom -> curve -> hover -> target
-		float  delay;       // normalized start time [0..1] — controls stagger
-		float  speed;       // how fast this sphere traverses (slight variation)
+		float3 path[7];
+		float  delay;
+		float  speed;
 	};
+
+	// ---- Materials ----
 
 	static constexpr uint MAT_OUT_WHITE = MAT_RANDOM_START + 10;
 	static constexpr uint MAT_OUT_CORAL = MAT_RANDOM_START + 11;
 	static constexpr uint MAT_OUT_TEAL = MAT_RANDOM_START + 13;
 	static constexpr uint MAT_OUT_LAVENDER = MAT_RANDOM_START + 14;
 	static constexpr uint MAT_OUT_BLUE = MAT_RANDOM_START + 15;
+	static constexpr uint MAT_OUT_RED_SPHERE = MAT_RANDOM_START + 16;
+	static constexpr uint MAT_OUT_CREDIT = MAT_RANDOM_START + 17;
+	static constexpr uint MAT_OUT_CREDIT_NAME = MAT_RANDOM_START + 18;
 
 	inline void SetupOutroMaterials(Tmpl8::Scene& scene)
 	{
-		// white: Lambertian — reflects the neutral room lighting as true white
 		{
 			Material m;
 			m.type = MaterialType::Lambertian;
@@ -88,7 +155,6 @@ namespace GameScenes
 			scene.materials[MAT_OUT_WHITE] = m;
 		}
 
-		// accents: emissive but low strength so they don't bleed
 		auto emissive = [&](uint slot, float3 color, float str)
 			{
 				Material m;
@@ -103,14 +169,29 @@ namespace GameScenes
 		emissive(MAT_OUT_TEAL, float3(0.55f, 0.72f, 0.69f), 1.5f);
 		emissive(MAT_OUT_LAVENDER, float3(0.78f, 0.72f, 0.85f), 1.5f);
 		emissive(MAT_OUT_BLUE, float3(0.47f, 0.60f, 0.72f), 1.5f);
+		emissive(MAT_OUT_CREDIT_NAME, float3(0.98f, 0.98f, 1.0f), 4.0f);
+
+
+		{
+			Material m;
+			m.type = MaterialType::Emissive;
+			m.albedo = float3(0.78f, 0.31f, 0.31f);
+			m.emission = float3(0.78f, 0.31f, 0.31f);
+			m.emissionStr = 3.0f;
+			scene.materials[MAT_OUT_RED_SPHERE] = m;
+		}
+
+		// credit text: pale lavender glow
+		emissive(MAT_OUT_CREDIT, float3(0.78f, 0.72f, 0.85f), 2.0f);
 	}
+
+	// ---- State ----
 
 	struct OutroState
 	{
-		// timing: just two things — travel duration and hold+fade
-		float travelBeats = 16;   // how many beats for the full sphere journey
-		float holdBeats = 4;    // stillness
-		float fadeBeats = 4;    // fade to white
+		float travelBeats = 16;
+		float holdBeats = 10;
+		float fadeBeats = 8;
 
 		float time = 0.0f;
 		float cycleTime = 0.0f;
@@ -130,7 +211,6 @@ namespace GameScenes
 
 		float3 textCenter;
 
-		// camera spline
 		static constexpr int CAM_PTS = 7;
 		float3 camPath[CAM_PTS] = {
 			float3(0.50f, 0.48f, 0.05f),
@@ -144,21 +224,27 @@ namespace GameScenes
 		float3 camTgtStart = float3(0.50f, 0.45f, 0.50f);
 		float3 camTgtEnd = float3(0.50f, 0.43f, 0.50f);
 
+		float redSphereRadius = 0.0f;
+		float redSphereMaxRadius = 0.10f;
+		float3 redSpherePos;
+		bool redSphereActive = false;
 
-		float TravelSec() const { return travelBeats * OUT_BEAT; }
+		// credits
+		std::vector<CreditSphere> creditSpheres;
+		std::vector<float3>       creditPos;
+		float creditRadius = 0.002f;
+		float creditGlitchDur = 0.5f;
+
+		float TravelSec() const { return travelBeats * OUTRO_BEAT; }
 		float HoldStart() const { return TravelSec(); }
-		float HoldSec()   const { return holdBeats * OUT_BEAT; }
+		float HoldSec()   const { return holdBeats * OUTRO_BEAT; }
 		float FadeStart() const { return HoldStart() + HoldSec(); }
-		float FadeSec()   const { return fadeBeats * OUT_BEAT; }
+		float FadeSec()   const { return fadeBeats * OUTRO_BEAT; }
 		float TotalSec()  const { return TravelSec() + HoldSec() + FadeSec(); }
 		int TotalBeats()  const { return (int)(travelBeats + holdBeats + fadeBeats); }
 
-
 		void UpdateCamera(float ct, SceneDef& def)
 		{
-			// camera stays still while screen is covered (first ~20%)
-			// then arcs around during the flow
-			// then settles for hold/fade
 			float travelDur = TravelSec();
 			float cp;
 			if (ct < travelDur * 0.15f)
@@ -173,11 +259,58 @@ namespace GameScenes
 				float p = (ct - travelDur) / max(TotalSec() - travelDur, 0.001f);
 				cp = 0.95f + outroSmooth(p) * 0.05f;
 			}
-
 			def.camPos = OutroEval(camPath, CAM_PTS, cp);
 			def.camTarget = camTgtStart * (1.0f - cp) + camTgtEnd * cp;
 		}
 
+		void BuildCreditLine(const char* text, float3 origin, float cellSz,
+			float baseRevealTime, uint& seed, bool highlight = false)
+		{
+			float cursorX = 0.0f;
+			for (int ci = 0; text[ci]; ci++)
+			{
+				char ch = text[ci];
+				if (ch == '\n')
+				{
+					cursorX = 0.0f;
+					origin.y -= cellSz * 9.0f;
+					continue;
+				}
+
+				const CreditGlyph* g = GetCreditGlyph(ch);
+				if (!g) { cursorX += cellSz * 6.0f; continue; }
+
+				float charReveal = baseRevealTime + ci * 0.04f;
+
+				for (int row = 0; row < 7; row++)
+				{
+					for (int col = 0; col < 5; col++)
+					{
+						if (!(g->rows[row] & (1 << (4 - col)))) continue;
+
+						CreditSphere cs;
+						cs.target = float3(
+							origin.x + cursorX + col * cellSz,
+							origin.y + (3.5f - row) * cellSz,
+							origin.z
+						);
+						cs.revealTime = charReveal + RandomFloat(seed) * 0.08f;
+						cs.glitchOffset = float3(
+							(RandomFloat(seed) - 0.5f) * 0.04f,
+							(RandomFloat(seed) - 0.5f) * 0.04f,
+							(RandomFloat(seed) - 0.5f) * 0.02f
+						);
+						cs.seed = seed;
+						cs.highlight = highlight;
+						seed = seed * 1103515245 + 12345;
+
+						creditSpheres.push_back(cs);
+					}
+				}
+
+				cursorX += cellSz * 6.0f;
+			}
+		}
 
 		void Build()
 		{
@@ -185,21 +318,29 @@ namespace GameScenes
 			camRight = normalize(cross(camFwd, float3(0, 1, 0)));
 			camUp = cross(camRight, camFwd);
 
-			// text layout
 			float cellSize = 0.012f;
 			float letterSpacing = 2.0f;
-			float totalWidth = (GLY_W * OUT_LETTERS +
-				letterSpacing * (OUT_LETTERS - 1)) * cellSize;
+			float totalWidth = (GLY_W * OUTRO_LETTERS +
+				letterSpacing * (OUTRO_LETTERS - 1)) * cellSize;
 
 			float textZ = 0.50f;
 			float textStartX = 0.5f - totalWidth * 0.5f;
 			float textCenterY = 0.43f;
 			textCenter = float3(0.5f, textCenterY, textZ);
 
-			// count cells
-			int filledPerLetter[OUT_LETTERS] = {};
+			float convergenceX = 0.0f;
+			for (int g = 1; g <= 3; g++)
+			{
+				float lx = textStartX + g * (GLY_W + letterSpacing) * cellSize;
+				convergenceX += lx + GLY_W * cellSize * 0.5f;
+			}
+			convergenceX /= 3.0f;
+			redSpherePos = float3(convergenceX, textCenterY, textZ + 0.12f);
+
+			// --- ORDER letter spheres ---
+			int filledPerLetter[OUTRO_LETTERS] = {};
 			int totalFilled = 0;
-			for (int g = 0; g < OUT_LETTERS; g++)
+			for (int g = 0; g < OUTRO_LETTERS; g++)
 				for (int r = 0; r < GLY_H; r++)
 					for (int c = 0; c < GLY_W; c++)
 						if (ORDER_GLYPHS[g][r] & (1 << (GLY_W - 1 - c)))
@@ -208,35 +349,26 @@ namespace GameScenes
 							totalFilled++;
 						}
 
-			int perLetter[OUT_LETTERS] = {};
+			int perLetter[OUTRO_LETTERS] = {};
 			int assigned = 0;
-			for (int g = 0; g < OUT_LETTERS; g++)
+			for (int g = 0; g < OUTRO_LETTERS; g++)
 			{
-				perLetter[g] = (OUT_SPHERES * filledPerLetter[g]) / max(totalFilled, 1);
+				perLetter[g] = (OUTRO_SPHERES * filledPerLetter[g]) / max(totalFilled, 1);
 				assigned += perLetter[g];
 			}
-			perLetter[2] += OUT_SPHERES - assigned;
+			perLetter[2] += OUTRO_SPHERES - assigned;
 
 			sph.clear();
-			sph.reserve(OUT_SPHERES);
+			sph.reserve(OUTRO_SPHERES);
 			uint seed = 4242;
-
 			const float goldenAngle = 2.39996323f;
 			int globalIdx = 0;
 
-			for (int g = 0; g < OUT_LETTERS; g++)
+			for (int g = 0; g < OUTRO_LETTERS; g++)
 			{
 				float letterX = textStartX + g * (GLY_W + letterSpacing) * cellSize;
-				float3 letterCenter(
-					letterX + GLY_W * cellSize * 0.5f,
-					textCenterY,
-					textZ
-				);
-				float3 hoverCenter(
-					letterCenter.x,
-					textCenterY + GLY_H * cellSize * 0.5f + 0.12f,
-					textZ
-				);
+				float3 letterCenter(letterX + GLY_W * cellSize * 0.5f, textCenterY, textZ);
+				float3 hoverCenter(letterCenter.x, textCenterY + GLY_H * cellSize * 0.5f + 0.12f, textZ);
 
 				std::vector<float3> cells;
 				for (int r = 0; r < GLY_H; r++)
@@ -260,71 +392,43 @@ namespace GameScenes
 						OutroSphere sp;
 						sp.letter = g;
 
-						// target: cell with jitter
 						float3 target = cells[ci] + float3(
 							(RandomFloat(seed) - 0.5f) * cellSize * 0.7f,
 							(RandomFloat(seed) - 0.5f) * cellSize * 0.7f,
-							(RandomFloat(seed) - 0.5f) * cellSize * 0.3f
-						);
+							(RandomFloat(seed) - 0.5f) * cellSize * 0.3f);
 
-						// hover: above letter
 						float3 hover = hoverCenter + float3(
 							(RandomFloat(seed) - 0.5f) * 0.015f,
 							(RandomFloat(seed) - 0.5f) * 0.015f,
-							(RandomFloat(seed) - 0.5f) * 0.005f
-						);
+							(RandomFloat(seed) - 0.5f) * 0.005f);
 
-						// screen position: golden-angle disc on camera lens
 						float spiralAngle = globalIdx * goldenAngle;
-						float spiralR = sqrtf((float)globalIdx / (float)OUT_SPHERES) * 0.025f;
-						float3 screenPos = startCamPos
-							+ camFwd * 0.008f
+						float spiralR = sqrtf((float)globalIdx / (float)OUTRO_SPHERES) * 0.12f;
+						float3 screenPos = startCamPos + camFwd * 0.03f
 							+ camRight * cosf(spiralAngle) * spiralR
 							+ camUp * sinf(spiralAngle) * spiralR;
 
-						// bloom: pulled back, spiral expanded
 						float bloomAngle = spiralAngle + 1.2f;
 						float bloomR = spiralR + 0.06f;
-						float3 bloom = startCamPos
-							+ camFwd * 0.18f
+						float3 bloom = startCamPos + camFwd * 0.18f
 							+ camRight * cosf(bloomAngle) * bloomR
 							+ camUp * sinf(bloomAngle) * bloomR;
 
-						// curve waypoint: flowing S-curve between bloom and hover
-						// offset sideways based on letter position for visual separation
-						float letterBias = ((float)g / (float)(OUT_LETTERS - 1) - 0.5f) * 0.12f;
-						float curveY = (bloom.y + hover.y) * 0.5f + 0.06f;
-						float curveZ = (bloom.z + hover.z) * 0.5f;
+						float letterBias = ((float)g / (float)(OUTRO_LETTERS - 1) - 0.5f) * 0.12f;
 						float3 curveWP = float3(
 							0.5f + letterBias + sinf(spiralAngle) * 0.03f,
-							curveY,
-							curveZ
-						);
+							(bloom.y + hover.y) * 0.5f + 0.06f,
+							(bloom.z + hover.z) * 0.5f);
 
-						// build the 7-point spline
-						// P0: tangent control behind screen (for smooth departure)
 						sp.path[0] = screenPos - camFwd * 0.01f;
-						// P1: screen position
 						sp.path[1] = screenPos;
-						// P2: bloom (spiral outward)
 						sp.path[2] = bloom;
-						// P3: flowing curve midpoint
 						sp.path[3] = curveWP;
-						// P4: hover above letter
 						sp.path[4] = hover;
-						// P5: target in letter
 						sp.path[5] = target;
-						// P6: tangent control past target (smooth arrival)
 						sp.path[6] = target + float3(0, -0.005f, 0);
-
-						// delay: based on normalized target Y (bottom fills first)
-						// and normalized X (left fills first, slight offset)
-						float xNorm = (target.x - (textCenter.x - totalWidth * 0.5f)) / totalWidth;
-						xNorm = std::clamp(xNorm, 0.0f, 1.0f);
-
-						// will be refined after Y-sort
 						sp.delay = 0;
-						sp.speed = 0.92f + RandomFloat(seed) * 0.16f; // 0.92 - 1.08
+						sp.speed = 0.92f + RandomFloat(seed) * 0.16f;
 
 						sph.push_back(sp);
 						globalIdx++;
@@ -333,55 +437,81 @@ namespace GameScenes
 				}
 			}
 
-			// sort within each letter by Y ascending, assign delay
 			int cumul = 0;
-			for (int g = 0; g < OUT_LETTERS; g++)
+			for (int g = 0; g < OUTRO_LETTERS; g++)
 			{
 				int start = cumul;
 				int end = cumul + perLetter[g];
-
 				std::sort(sph.begin() + start, sph.begin() + end,
 					[](const OutroSphere& a, const OutroSphere& b) {
-						return a.path[5].y < b.path[5].y; // sort by target Y
+						return a.path[5].y < b.path[5].y;
 					});
-
 				for (int i = start; i < end; i++)
 				{
 					float yNorm = (float)(i - start) / (float)max(end - start - 1, 1);
-					float xNorm = ((float)g / (float)(OUT_LETTERS - 1));
-
-					// bottom-left arrives first, top-right arrives last
-					// this creates the wave-fill effect
+					float xNorm = ((float)g / (float)(OUTRO_LETTERS - 1));
 					sph[i].delay = yNorm * 0.35f + xNorm * 0.15f;
 				}
-
 				cumul = end;
 			}
 
-			pos.resize(OUT_SPHERES);
-			for (int i = 0; i < OUT_SPHERES; i++)
-				pos[i] = sph[i].path[1]; // start at screen pos
+			pos.resize(OUTRO_SPHERES);
+			for (int i = 0; i < OUTRO_SPHERES; i++)
+				pos[i] = sph[i].path[1];
 
-			// materials
 			mats.clear();
 			seed = 8888;
-			const uint accentMats[4] = {
-				MAT_OUT_CORAL, MAT_OUT_TEAL, MAT_OUT_LAVENDER, MAT_OUT_BLUE
-			};
-			for (int i = 0; i < OUT_SPHERES; i++)
+			const uint accentMats[4] = { MAT_OUT_CORAL, MAT_OUT_TEAL, MAT_OUT_LAVENDER, MAT_OUT_BLUE };
+			for (int i = 0; i < OUTRO_SPHERES; i++)
 			{
 				float r = RandomFloat(seed);
-				if (r < 0.80f)
-					mats.push_back(MAT_OUT_WHITE);
+				if (r < 0.80f) mats.push_back(MAT_OUT_WHITE);
 				else
 				{
-					int idx = (int)((r - 0.80f) * 20.0f); // 0-3
-					idx = std::clamp(idx, 0, 3);
+					int idx = std::clamp((int)((r - 0.80f) * 20.0f), 0, 3);
 					mats.push_back(accentMats[idx]);
 				}
 			}
-		}
 
+			// --- Credit text spheres ---
+			creditSpheres.clear();
+			float creditCellSize = 0.004f;
+
+			float3 creditBL(
+				textStartX - 0.03f,                                    // more to the left
+				textCenterY - GLY_H * cellSize * 0.5f - 0.06f,        // was -0.025f
+				textZ - 0.005f
+			);
+
+
+			BuildCreditLine("Created by:", creditBL, creditCellSize, 0.0f, seed, false);
+
+			float3 nameBL(
+				creditBL.x,
+				creditBL.y - creditCellSize * 9.0f,
+				creditBL.z
+			);
+			BuildCreditLine("    Yesse Seijn", nameBL, creditCellSize * 1.4f, 0.5f, seed, true);
+
+			// top-right credits
+			float3 creditTR(
+				textStartX + totalWidth - 0.06f,
+				textCenterY + GLY_H * cellSize * 0.5f + 0.025f,
+				textZ - 0.005f
+			);
+			BuildCreditLine("music by:", creditTR, creditCellSize, 1.0f, seed, false);
+
+			float3 musicTR(
+				creditTR.x,
+				creditTR.y - creditCellSize * 9.0f,
+				creditTR.z
+			);
+			BuildCreditLine("    musinova", musicTR, creditCellSize, 1.5f, seed, true);
+
+			creditPos.resize(creditSpheres.size());
+			for (int i = 0; i < (int)creditSpheres.size(); i++)
+				creditPos[i] = float3(-10, -10, -10);
+		}
 
 		void UpdatePositions(float ct)
 		{
@@ -389,47 +519,30 @@ namespace GameScenes
 			float holdEnd = FadeStart();
 			float fadeEnd = TotalSec();
 
-			for (int i = 0; i < OUT_SPHERES; i++)
+			for (int i = 0; i < OUTRO_SPHERES; i++)
 			{
 				const OutroSphere& s = sph[i];
-
 				if (ct < travelDur)
 				{
-					// global progress [0..1]
 					float gp = ct / travelDur;
-
-					// per-sphere progress: offset by delay, scaled by speed
-					// the delay window is the first 50% of travel time
 					float startT = s.delay * 0.50f;
-					float localP = (gp - startT) / max(1.0f - startT, 0.001f);
-					localP = std::clamp(localP, 0.0f, 1.0f);
-
-					// apply per-sphere speed variation
+					float localP = std::clamp((gp - startT) / max(1.0f - startT, 0.001f), 0.0f, 1.0f);
 					localP = std::clamp(localP * s.speed, 0.0f, 1.0f);
-
-					// smooth the parameter for clean motion
-					float t = outroSmooth(localP);
-
-					// evaluate the sphere's personal spline
-					pos[i] = OutroEval(s.path, 7, t);
+					pos[i] = OutroEval(s.path, 7, outroSmooth(localP));
 				}
 				else if (ct < holdEnd)
 				{
-					// hold: at target with gentle wave
 					float holdT = ct - travelDur;
 					float xNorm = (s.path[5].x - textCenter.x) / max(0.001f, 0.1f);
 					float ripple = sinf(xNorm * 4.0f - holdT * 2.5f) * 0.001f;
-					float beat = sinf(fmodf(ct, OUT_BEAT) / OUT_BEAT * 2.0f * PI) * 0.0005f;
+					float beat = sinf(fmodf(ct, OUTRO_BEAT) / OUTRO_BEAT * 2.0f * PI) * 0.0005f;
 					pos[i] = s.path[5] + float3(0, 0, ripple + beat);
 				}
 				else if (ct < fadeEnd)
 				{
-					// fade: drift upward gently
-					float p = (ct - holdEnd) / max(FadeSec(), 0.001f);
-					p = std::clamp(p, 0.0f, 1.0f);
-					float drift = p * p * 0.03f;
-					float3 outward = (s.path[5] - textCenter) * p * 0.2f;
-					pos[i] = s.path[5] + float3(0, drift, 0) + outward;
+					float p = std::clamp((ct - holdEnd) / max(FadeSec(), 0.001f), 0.0f, 1.0f);
+					pos[i] = s.path[5] + float3(0, p * p * 0.03f, 0)
+						+ (s.path[5] - textCenter) * p * 0.2f;
 				}
 				else
 				{
@@ -438,15 +551,55 @@ namespace GameScenes
 			}
 		}
 
+		void UpdateCredits(float ct)
+		{
+			float holdTime = ct - HoldStart();
+
+			for (int i = 0; i < (int)creditSpheres.size(); i++)
+			{
+				const CreditSphere& cs = creditSpheres[i];
+				float age = holdTime - cs.revealTime;
+
+				if (age < 0.0f)
+				{
+					creditPos[i] = float3(-10, -10, -10);
+				}
+				else if (age < creditGlitchDur)
+				{
+					float p = age / creditGlitchDur;
+					float settle = outroSmooth(p);
+
+					uint s = cs.seed + (uint)(age * 30.0f);
+					float jitterAmt = (1.0f - settle) * 0.8f;
+					float spike = (RandomFloat(s) < (1.0f - p) * 0.3f) ? 1.5f : 0.0f;
+
+					float3 jitter(
+						(RandomFloat(s) - 0.5f) * (jitterAmt + spike) * 0.02f,
+						(RandomFloat(s) - 0.5f) * (jitterAmt + spike) * 0.02f,
+						(RandomFloat(s) - 0.5f) * jitterAmt * 0.005f
+					);
+
+					creditPos[i] = cs.target + cs.glitchOffset * (1.0f - settle) + jitter;
+				}
+				else
+				{
+					uint s = cs.seed + (uint)(ct * 20.0f);
+					float micro = 0.0002f;
+					creditPos[i] = cs.target + float3(
+						(RandomFloat(s) - 0.5f) * micro,
+						(RandomFloat(s) - 0.5f) * micro, 0);
+				}
+			}
+		}
 
 		void Reset()
 		{
-			cycleTime = 0;
-			time = 0;
-			fadeWhite = 0;
-			shrinkMul = 1.0f;
-			for (int i = 0; i < OUT_SPHERES; i++)
-				pos[i] = sph[i].path[1];
+			cycleTime = 0; time = 0;
+			fadeWhite = 0; shrinkMul = 1.0f;
+			redSphereRadius = 0.0f; redSphereActive = false;
+			for (int i = 0; i < OUTRO_SPHERES; i++) pos[i] = sph[i].path[1];
+			for (int i = 0; i < (int)creditSpheres.size(); i++)
+				creditPos[i] = float3(-10, -10, -10);
 		}
 	};
 
@@ -473,11 +626,12 @@ namespace GameScenes
 				l.position = p; l.color = c; l.enabled = true;
 				s.pointLights.push_back(l);
 			};
-		addL(float3(0.5f, 0.80f, 0.50f), float3(0.8f, 0.8f, 0.85f));
-		addL(float3(0.2f, 0.50f, 0.30f), float3(0.5f, 0.5f, 0.52f));
-		addL(float3(0.8f, 0.50f, 0.30f), float3(0.5f, 0.5f, 0.52f));
-		addL(float3(0.5f, 0.55f, 0.70f), float3(0.6f, 0.6f, 0.63f));
-		addL(float3(0.5f, 0.35f, 0.50f), float3(0.4f, 0.4f, 0.43f));
+
+		addL(float3(0.5f, 0.80f, 0.50f), float3(1.5f, 1.5f, 1.55f));
+		addL(float3(0.2f, 0.50f, 0.30f), float3(1.0f, 1.0f, 1.05f));
+		addL(float3(0.8f, 0.50f, 0.30f), float3(1.0f, 1.0f, 1.05f));
+		addL(float3(0.5f, 0.55f, 0.70f), float3(1.2f, 1.2f, 1.25f));
+		addL(float3(0.5f, 0.35f, 0.50f), float3(0.8f, 0.8f, 0.85f));
 
 		auto state = std::make_shared<OutroState>();
 
@@ -487,8 +641,14 @@ namespace GameScenes
 				if (!state->initialized)
 				{
 					state->initialized = true;
-					SetupGyroscopeMaterials(scene);
+					SetupOutroMaterials(scene);
 					state->Build();
+
+					scene.spheres.clear();
+					for (int i = 0; i < OUTRO_SPHERES; i++)
+						scene.spheres.push_back({
+							state->pos[i], state->sphereRadius, state->mats[i] });
+					scene.BuildSphereBVH();
 					if (resetAcc) resetAcc();
 					return;
 				}
@@ -502,35 +662,86 @@ namespace GameScenes
 				state->UpdateCamera(ct, def);
 				state->UpdatePositions(ct);
 
-				// fade phase
-				float fadeStart = state->FadeStart();
-				float fadeDur = state->FadeSec();
-				if (ct >= fadeStart)
-				{
-					float p = std::clamp((ct - fadeStart) / max(fadeDur, 0.001f), 0.0f, 1.0f);
-					state->shrinkMul = max(0.0f, 1.0f - p * p * p);
-					state->fadeWhite = outroSmooth(p);
-				}
-				else
-				{
-					state->shrinkMul = 1.0f;
-					state->fadeWhite = 0.0f;
-				}
+// fade phase
+            float fadeStart = state->FadeStart();
+            float fadeDur = state->FadeSec();
+            if (ct >= fadeStart)
+            {
+                float p = std::clamp((ct - fadeStart) / max(fadeDur, 0.001f), 0.0f, 1.0f);
+                state->shrinkMul = 1.0f; // DON'T shrink — keep everything visible for white-out
+                state->fadeWhite = outroSmooth(p);
 
-				// rebuild spheres
+                // red sphere transitions: red → white, emission ramps up massively
+                float3 redColor = float3(0.78f, 0.31f, 0.31f);
+                float3 whiteColor = float3(1.0f, 1.0f, 1.0f);
+                float3 fadeColor = redColor * (1.0f - p) + whiteColor * p;
+                float fadeEmission = 3.0f + p * p * 60.0f; // 3 → 63
+
+                Material m;
+                m.type = MaterialType::Emissive;
+                m.albedo = fadeColor;
+                m.emission = fadeColor;
+                m.emissionStr = fadeEmission;
+                scene.materials[MAT_OUT_RED_SPHERE] = m;
+
+                // grow the sphere bigger during fade
+                state->redSphereMaxRadius = 0.10f + p * 0.08f; // 0.10 → 0.18
+            }
+            else
+            {
+                state->shrinkMul = 1.0f;
+                state->fadeWhite = 0.0f;
+            }
+
+            // red sphere growth
+            float redStart = state->TravelSec() * 0.75f;
+            float redEnd = state->HoldStart() + state->HoldSec() * 0.5f;
+            if (ct >= redStart)
+            {
+                float growP = std::clamp((ct - redStart) / max(redEnd - redStart, 0.001f), 0.0f, 1.0f);
+                float eased = 1.0f - (1.0f - growP) * (1.0f - growP) * (1.0f - growP);
+                state->redSphereRadius = eased * state->redSphereMaxRadius;
+                state->redSphereActive = true;
+            }
+            else
+            {
+                state->redSphereRadius = 0.0f;
+                state->redSphereActive = false;
+            }
+
+				// credits
+				if (ct >= state->HoldStart())
+					state->UpdateCredits(ct);
+
+				// rebuild all spheres
 				scene.spheres.clear();
-				float r = state->sphereRadius * state->shrinkMul;
-				if (r > 0.0001f)
-				{
-					for (int i = 0; i < OUT_SPHERES; i++)
-					{
-						scene.spheres.push_back({
-							state->pos[i], r, state->mats[i]
-							});
-					}
-				}
-				scene.BuildSphereBVH();
+				// grow from 0 during first 15% of travel
+				float growIn = std::clamp(ct / (state->TravelSec() * 0.15f), 0.0f, 1.0f);
+				float r = state->sphereRadius * growIn * state->shrinkMul;
 
+				if (r > 0.0001f)
+					for (int i = 0; i < OUTRO_SPHERES; i++)
+						scene.spheres.push_back({ state->pos[i], r, state->mats[i] });
+
+				if (state->redSphereActive && state->redSphereRadius > 0.001f)
+					scene.spheres.push_back({
+						state->redSpherePos, state->redSphereRadius, MAT_OUT_RED_SPHERE });
+
+			if (ct >= state->HoldStart())
+				{
+					float creditR = state->creditRadius * state->shrinkMul;
+					float nameR = state->creditRadius * 1.4f * state->shrinkMul;
+					if (creditR > 0.0001f)
+						for (int i = 0; i < (int)state->creditSpheres.size(); i++)
+							if (state->creditPos[i].x > -1.0f)
+								scene.spheres.push_back({
+									state->creditPos[i],
+									state->creditSpheres[i].highlight ? nameR : creditR,
+									state->creditSpheres[i].highlight ? MAT_OUT_CREDIT_NAME : MAT_OUT_CREDIT
+									});
+				}
+
+				scene.BuildSphereBVH();
 				if (resetAcc) resetAcc();
 			};
 
@@ -540,7 +751,7 @@ namespace GameScenes
 				if (!ImGui::CollapsingHeader("Outro", ImGuiTreeNodeFlags_DefaultOpen))
 					return;
 
-				float beat = state->cycleTime / OUT_BEAT;
+				float beat = state->cycleTime / OUTRO_BEAT;
 				float travelP = std::clamp(state->cycleTime / state->TravelSec(), 0.0f, 1.0f);
 				bool inHold = state->cycleTime >= state->HoldStart() && state->cycleTime < state->FadeStart();
 				bool inFade = state->cycleTime >= state->FadeStart();
@@ -553,20 +764,22 @@ namespace GameScenes
 				ImGui::TextColored(col, "Phase: %s", phase);
 				ImGui::SameLine();
 				ImGui::TextDisabled("%.1f / %.1fs", state->cycleTime, state->TotalSec());
-
 				ImGui::ProgressBar(state->cycleTime / state->TotalSec(), ImVec2(-1, 3));
 
 				ImGui::Text("Beat %.1f / %d  |  Travel: %.0f%%",
 					beat, state->TotalBeats(), travelP * 100.0f);
-				ImGui::Text("Shrink: %.3f  |  Fade: %.3f",
-					state->shrinkMul, state->fadeWhite);
+				ImGui::Text("Shrink: %.3f  |  Fade: %.3f  |  Red: %.4f",
+					state->shrinkMul, state->fadeWhite, state->redSphereRadius);
+				ImGui::Text("Credits: %d spheres  |  Total: %d",
+					(int)state->creditSpheres.size(), (int)scene.spheres.size());
 
 				ImGui::Spacing();
-
-				bool changed = false;
-				changed |= ImGui::SliderFloat("Travel##out", &state->travelBeats, 8, 24, "%.0f beats");
-				changed |= ImGui::SliderFloat("Hold##out", &state->holdBeats, 1, 8, "%.0f beats");
-				changed |= ImGui::SliderFloat("Fade##out", &state->fadeBeats, 2, 8, "%.0f beats");
+				ImGui::SliderFloat("Travel##out", &state->travelBeats, 8, 24, "%.0f beats");
+				ImGui::SliderFloat("Hold##out", &state->holdBeats, 1, 8, "%.0f beats");
+				ImGui::SliderFloat("Fade##out", &state->fadeBeats, 2, 8, "%.0f beats");
+				ImGui::SliderFloat("Red Max R##out", &state->redSphereMaxRadius, 0.02f, 0.15f, "%.3f");
+				ImGui::SliderFloat("Credit R##out", &state->creditRadius, 0.001f, 0.005f, "%.3f");
+				ImGui::SliderFloat("Glitch Dur##out", &state->creditGlitchDur, 0.1f, 2.0f, "%.2fs");
 
 				if (ImGui::TreeNode("Camera##outro"))
 				{

@@ -380,7 +380,6 @@ namespace GameScenes
 
 	inline void RegisterAllScenes(SceneManager& mgr)
 	{
-		mgr.AddScene(OutroShowcase());
 		mgr.AddScene(CubeShowcase());
 		mgr.AddScene(MengerShowcase());
 
@@ -394,6 +393,7 @@ namespace GameScenes
 		mgr.AddScene(InfinityMirrorShowcase());
 
 		mgr.AddScene(GyroscopeShowcase());
+		mgr.AddScene(OutroShowcase());
 		mgr.AddScene(PhysicsDemo());
 	}
 

@@ -10,6 +10,9 @@
 #include "GameScenes.h"
 #include "EventSystem.h"
 
+void RunAllTests();
+
+
 class material;
 
 struct SceneLights
@@ -177,5 +180,14 @@ namespace Tmpl8
 
 		std::vector<float3> originalPointLightColors;
 		bool lightColorsStored = false;
+
+
+		bool  bloomFadeActive = false;
+		float bloomFadeTimer = 0.0f;
+		float bloomFadeDuration = 1.0f;
+		float bloomIntensityFrom = 0.35f;
+		float bloomIntensityTo = 0.35f;
+		float bloomThresholdFrom = 1.0f;
+		float bloomThresholdTo = 1.0f;
 	};
 }

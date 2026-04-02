@@ -155,6 +155,9 @@
     </ClCompile>
     <ClCompile Include="template\tmpl8math.cpp" />
     <ClCompile Include="renderer.cpp" />
+    <ClCompile Include="UnitTests.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="VoxelFactory.cpp" />
   </ItemGroup>
   <ItemGroup>

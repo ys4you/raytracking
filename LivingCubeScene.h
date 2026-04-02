@@ -1,4 +1,3 @@
-
 #pragma once
 #include "SceneManager.h"
 #include "VoxelFactory.h"
@@ -29,7 +28,7 @@ namespace GameScenes
 		static constexpr int   MAX_DIM = 8;
 		static constexpr float GRID_SIZE = 512.0f;
 
-		int     dim = 6;
+		int     dim = 8;
 		bool    cells[MAX_DIM][MAX_DIM][MAX_DIM] = {};
 		bool    buffer[MAX_DIM][MAX_DIM][MAX_DIM] = {};
 		CellVis cellVis[MAX_DIM][MAX_DIM][MAX_DIM] = {};
@@ -43,10 +42,10 @@ namespace GameScenes
 		bool  paused = false;
 		bool  needsInitialSync = true;
 
-		float cubeSpacing = 1.2f;
+		float cubeSpacing = 1.05f;
 
 		float angleX = 0.0f, angleY = 0.0f, angleZ = 0.0f;
-		float speedX = 0.12f, speedY = 0.25f, speedZ = 0.08f;
+		float speedX = 0.18f, speedY = 0.35f, speedZ = 0.12f;
 
 		int objBase = 0;
 
@@ -86,7 +85,7 @@ namespace GameScenes
 			timer = 0.0f;
 		}
 
-		void SeedRandom(float density = 0.35f)
+		void SeedRandom(float density = 0.45f)
 		{
 			Clear();
 			int pad = dim / 4;
@@ -197,21 +196,21 @@ namespace GameScenes
 		for (int i = 0; i < 4; i++)
 			scene.voxelObjects.push_back(VoxelObject(1, 1, 1, { pals[i] }));
 
-		auto makeMat = [](float3 color) -> Material
+		auto makeMat = [](float3 color, float str) -> Material
 			{
 				Material m;
 				m.type = MaterialType::Emissive;
 				m.albedo = color;
 				m.emission = color;
-				m.emissionStr = 1.5f;
-				m.roughness = 0.4f;
+				m.emissionStr = str;
+				m.roughness = 0.3f;
 				return m;
 			};
 
-		scene.materials[MAT_COUNT + (PAL_STABLE - 1)] = makeMat(float3(0.549f, 0.722f, 0.690f));
-		scene.materials[MAT_COUNT + (PAL_BORN - 1)] = makeMat(float3(0.847f, 0.816f, 0.627f));
-		scene.materials[MAT_COUNT + (PAL_DYING_UNDER - 1)] = makeMat(float3(0.910f, 0.627f, 0.627f));
-		scene.materials[MAT_COUNT + (PAL_DYING_OVER - 1)] = makeMat(float3(0.784f, 0.722f, 0.847f));
+		scene.materials[MAT_COUNT + (PAL_STABLE - 1)] = makeMat(float3(0.55f, 0.72f, 0.69f), 4.0f);
+		scene.materials[MAT_COUNT + (PAL_BORN - 1)] = makeMat(float3(1.0f, 0.95f, 0.6f), 5.0f);
+		scene.materials[MAT_COUNT + (PAL_DYING_UNDER - 1)] = makeMat(float3(0.95f, 0.4f, 0.4f), 4.5f);
+		scene.materials[MAT_COUNT + (PAL_DYING_OVER - 1)] = makeMat(float3(0.78f, 0.55f, 0.95f), 4.5f);
 	}
 
 
@@ -223,7 +222,7 @@ namespace GameScenes
 	{
 		scene.voxelInstances.clear();
 
-		const float gridExtent = 80.0f;
+		const float gridExtent = 160.0f;
 		const float cellSize = gridExtent / static_cast<float>(life.dim);
 		const float cubeScale = cellSize / life.cubeSpacing;
 		const float3 center(256.0f, 240.0f, 256.0f);
@@ -274,35 +273,51 @@ namespace GameScenes
 			float3(0, 0, 0),
 			float3(1, 1, 1), true
 			});
-
-
-		s.camPos = float3(0.5f, 0.47f, -0.28f);
-		s.camTarget = float3(0.5f, 0.45f, 0.5f);
+		s.camPos = float3(0.5f, 0.55f, -0.05f);
+		s.camTarget = float3(0.5f, 0.47f, 0.5f);
 
 		s.sky.sunDir = normalize(float3(0.2f, -0.5f, 0.3f));
-		s.sky.sunColor = float3(1.0f, 0.85f, 0.8f);
-		s.sky.sunIntensity = 0.6f;
-		s.sky.timeOfDay = 0.3f;
+		s.sky.sunColor = float3(1.0f, 0.95f, 0.9f);
+		s.sky.sunIntensity = 1.5f;
+		s.sky.timeOfDay = 0.35f;
 		s.sky.animate = false;
 
-		auto addLight = [&](float3 pos, float3 col)
+		// orbiting spline camera
+		float3 center(0.5f, 0.47f, 0.5f);
+		float orbitR = 0.45f;
+		float camY = 0.55f;
+		int pts = 8;
+		for (int i = 0; i < pts; i++)
+		{
+			float a = (float)i / (float)pts * 2.0f * PI;
+			s.splinePoints.push_back(float3(
+				center.x + cosf(a) * orbitR,
+				camY + sinf(a * 2.0f) * 0.04f,  // gentle vertical bob
+				center.z + sinf(a) * orbitR
+			));
+		}
+		s.splineSpeed = 0.06f;
+		s.splineEnabled = true;
+
+		// strong 8-light rig
+		auto addL = [&](float3 p, float3 c)
 			{
 				PointLight l;
-				l.position = pos;
-				l.color = col;
-				l.enabled = true;
+				l.position = p; l.color = c; l.enabled = true;
 				s.pointLights.push_back(l);
 			};
-		addLight(float3(0.5f, 0.85f, 0.5f), float3(0.9f, 0.88f, 0.85f));
-		addLight(float3(0.5f, 0.45f, 0.1f), float3(0.5f, 0.48f, 0.45f));
-		addLight(float3(0.1f, 0.5f, 0.5f), float3(0.2f, 0.25f, 0.23f));
-		addLight(float3(0.9f, 0.5f, 0.5f), float3(0.22f, 0.2f, 0.25f));
-		addLight(float3(0.5f, 0.15f, 0.5f), float3(0.12f, 0.11f, 0.10f));
-		addLight(float3(0.5f, 0.5f, 0.9f), float3(0.15f, 0.18f, 0.22f));
+		addL(float3(0.5f, 0.90f, 0.5f), float3(1.8f, 1.75f, 1.7f));    // overhead key
+		addL(float3(0.5f, 0.10f, 0.5f), float3(0.4f, 0.38f, 0.36f));   // floor bounce
+		addL(float3(0.0f, 0.50f, 0.5f), float3(0.5f, 0.65f, 0.6f));    // teal left
+		addL(float3(1.0f, 0.50f, 0.5f), float3(0.6f, 0.5f, 0.7f));     // lavender right
+		addL(float3(0.5f, 0.50f, 0.0f), float3(1.2f, 1.15f, 1.1f));    // front fill
+		addL(float3(0.5f, 0.50f, 1.0f), float3(0.5f, 0.6f, 0.7f));     // blue back rim
+		addL(float3(0.2f, 0.75f, 0.2f), float3(0.3f, 0.4f, 0.35f));    // top-left accent
+		addL(float3(0.8f, 0.75f, 0.8f), float3(0.35f, 0.3f, 0.4f));    // top-right accent
 
 		auto life = std::make_shared<LifeState>();
 		life->ApplyPreset();
-		life->SeedRandom(0.35f);
+		life->SeedRandom(0.45f);
 
 		s.tickCallback = [life](SceneDef& def, Tmpl8::Scene& scene,
 			float deltaTime, std::function<void()> resetAcc)
@@ -357,11 +372,11 @@ namespace GameScenes
 					};
 				colorDot(float3(0.549f, 0.722f, 0.690f), "Stable");
 				ImGui::SameLine();
-				colorDot(float3(0.847f, 0.816f, 0.627f), "Born");
+				colorDot(float3(1.0f, 0.95f, 0.6f), "Born");
 				ImGui::SameLine();
-				colorDot(float3(0.910f, 0.627f, 0.627f), "Underpop");
+				colorDot(float3(0.95f, 0.4f, 0.4f), "Underpop");
 				ImGui::SameLine();
-				colorDot(float3(0.784f, 0.722f, 0.847f), "Overpop");
+				colorDot(float3(0.78f, 0.55f, 0.95f), "Overpop");
 
 				ImGui::Spacing();
 
@@ -377,7 +392,7 @@ namespace GameScenes
 				ImGui::SameLine();
 				if (ImGui::Button("Reseed"))
 				{
-					life->SeedRandom(0.35f);
+					life->SeedRandom(0.45f);
 					SyncInstances(*life, scene, life->GetRotation());
 					if (resetAcc) resetAcc();
 				}
@@ -401,7 +416,7 @@ namespace GameScenes
 				if (ImGui::Combo("Ruleset", &life->preset, presetNames, LifeState::P_COUNT))
 				{
 					life->ApplyPreset();
-					life->SeedRandom(0.35f);
+					life->SeedRandom(0.45f);
 					SyncInstances(*life, scene, life->GetRotation());
 					if (resetAcc) resetAcc();
 				}
@@ -420,7 +435,7 @@ namespace GameScenes
 				if (ImGui::SliderInt("Grid Size", &life->dim, 4, LifeState::MAX_DIM))
 				{
 					life->dim = std::clamp(life->dim, 4, (int)LifeState::MAX_DIM);
-					life->SeedRandom(0.35f);
+					life->SeedRandom(0.45f);
 					SyncInstances(*life, scene, life->GetRotation());
 					if (resetAcc) resetAcc();
 				}
@@ -433,7 +448,7 @@ namespace GameScenes
 
 				ImGui::Spacing();
 
-				static float density = 0.35f;
+				static float density = 0.45f;
 				ImGui::SliderFloat("Seed Density", &density, 0.05f, 0.8f, "%.2f");
 				if (ImGui::Button("Reseed with Density"))
 				{
