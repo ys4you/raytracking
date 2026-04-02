@@ -819,6 +819,9 @@ static void LightColorDot(float3 c)
 
 void Renderer::UI()
 {
+    if (!useUI)
+        return;
+
     ImGui::Begin("Inspector");
 
     sceneManager.UI(scene, camera, sky, lights, [this]() { ResetAccumulator(); });

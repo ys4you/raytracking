@@ -177,7 +177,7 @@ namespace Tmpl8
 		float lightFadeDuration = 2.0f;
 		float lightFadeFrom = 0.0f;
 		float lightFadeTo = 1.0f;
-		float lightFadeMult = 1.0f;
+		float lightFadeMult = .0f;
 
 		std::vector<float3> originalPointLightColors;
 		bool lightColorsStored = false;
@@ -190,5 +190,7 @@ namespace Tmpl8
 		float bloomIntensityTo = 0.35f;
 		float bloomThresholdFrom = 1.0f;
 		float bloomThresholdTo = 1.0f;
+
+		bool useUI = false;
 	};
 }

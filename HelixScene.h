@@ -27,7 +27,6 @@ namespace GameScenes
 		return t * t * (3.0f - 2.0f * t);
 	}
 
-	// ease-out: fast start, gentle settle
 	inline float easeOut(float t)
 	{
 		t = std::clamp(t, 0.0f, 1.0f);
@@ -35,7 +34,6 @@ namespace GameScenes
 		return 1.0f - inv * inv * inv;
 	}
 
-	// ease-out quintic: even faster start
 	inline float easeOutQ(float t)
 	{
 		t = std::clamp(t, 0.0f, 1.0f);
@@ -43,13 +41,11 @@ namespace GameScenes
 		return 1.0f - inv * inv * inv * inv * inv;
 	}
 
-	// remap p into a sub-window, return 0..1
 	inline float window(const float p, const float start, const float end)
 	{
 		return std::clamp((p - start) / (end - start), 0.0f, 1.0f);
 	}
 
-	// lerp
 	inline float mix(const float a, const float b, const float t) { return a + (b - a) * t; }
 
 
@@ -57,7 +53,7 @@ namespace GameScenes
 	{
 		// ============ TIME ============
 		float time = 0.0f;
-		float progress = 0.0f;  // 0..1 over 12.15s
+		float progress = 0.0f;
 
 		// ============ EVALUATED SHAPE ============
 		float radius = 0.0f;
@@ -73,8 +69,8 @@ namespace GameScenes
 		float angleX = 0, angleY = 0, angleZ = 0;
 
 		// ============ DUAL SCAN LINES ============
-		float scanUp = -0.2f;   // ascending scan
-		float scanDn = 1.2f;    // descending scan (appears later)
+		float scanUp = -0.2f;
+		float scanDn = 1.2f;
 		float scanUpSpd = 0.0f;
 		float scanDnSpd = 0.0f;
 		float scanWidth = 0.0f;
@@ -91,36 +87,24 @@ namespace GameScenes
 		bool  paused = false;
 		int   objBase = -1;
 		bool  needsInit = true;
+		float lastDt = 0.0f;
 
 
-		// ===================================================================
-			const float p = progress;
-			const float spinRate = mix(0.15f, 0.28f, easeOut(window(p, 0.0f, 0.60f)));
-			const float grp = mix(0.008f, 0.022f, easeOut(window(p, 0.0f, 0.70f)));
-		void Tick(const float dtMs)
-			const float dt = dtMs * 0.001f;
-		float GetScanAmp(const float t) const
+		// ==================== EVAL ====================
+		// Evaluates all shape/motion parameters from current progress.
+
+		void Eval()
 		{
-			const float w = std::max(scanWidth, 0.02f);
+			const float p = progress;
 
-			const float dU = fabsf(t - scanUp);
-			// Gaussian falloff keeps scan highlights soft instead of hard-edged.
-				const float dD = fabsf(t - scanDn);
-		float GetRadius(const float t) const
-
-		float3 GetMicroDrift(const int strand, const float t) const
-			const float ph = driftPhase + t * 3.0f;
-
-		float3 GetCubeRot(const int strand, const float t) const
-			const float ph = driftPhase * 0.5f + t * 2.0f + strand * PI;
-
-			const float scan = GetScanAmp(t);
-			const float amp = tiltAmp + scan * 8.0f;
-
-			const float diff = rungReveal - (float)i;
+			// ---- SHAPE ----
+			radius = mix(12.0f, 18.0f, easeOut(window(p, 0.0f, 0.50f)));
+			height = mix(40.0f, 60.0f, easeOut(window(p, 0.0f, 0.45f)));
+			twist = mix(1.0f, 2.5f, easeOut(window(p, 0.0f, 0.55f)));
 			cubeSize = mix(4.0f, 5.2f, easeOut(window(p, 0.0f, 0.35f)));
+			rungReveal = mix(10.0f, (float)HX_MAX_RUNGS, easeOut(window(p, 0.0f, 0.65f)));
 
-			// ---- SECOND STRAND: 25%–40%, ~3s–5s mark ----
+			// ---- SECOND STRAND: appears 25%-40% ----
 			float s2 = easeOut(window(p, 0.25f, 0.40f));
 			strand2Fade = s2;
 			strandCount = (p > 0.23f) ? 2 : 1;
@@ -129,7 +113,7 @@ namespace GameScenes
 			scanUpSpd = mix(0.25f, 0.45f, easeOut(window(p, 0.0f, 0.50f)));
 			scanWidth = mix(0.10f, 0.06f, easeOut(window(p, 0.0f, 0.80f)));
 
-			// ---- SCAN DOWN: activates at 45%, catches up in speed ----
+			// ---- SCAN DOWN: activates at 45% ----
 			scanDnActive = (p > 0.43f);
 			scanDnSpd = mix(0.0f, 0.40f, easeOut(window(p, 0.43f, 0.70f)));
 
@@ -143,13 +127,14 @@ namespace GameScenes
 			angleY += grp * lastDt;
 			angleZ += grp * 0.25f * lastDt;
 
-			// ---- MICRO-MOTION: ramps up, peaks at ~70% ----
+			// ---- MICRO-MOTION: ramps up, peaks ~70% ----
 			breathAmp = mix(0.2f, 1.0f, easeOut(window(p, 0.0f, 0.70f)));
 			driftAmp = mix(0.2f, 0.6f, easeOut(window(p, 0.0f, 0.60f)));
 			tiltAmp = mix(2.0f, 7.0f, easeOut(window(p, 0.0f, 0.65f)));
 		}
 
-		float lastDt = 0.0f;
+
+		// ==================== TICK ====================
 
 		void Tick(float dtMs)
 		{
@@ -178,13 +163,13 @@ namespace GameScenes
 		}
 
 
-		// ========== SAMPLING ==========
+		// ==================== SAMPLING ====================
 
 		float GetScanAmp(float t) const
 		{
 			float w = std::max(scanWidth, 0.02f);
 
-			// ascending scan
+			// ascending scan — Gaussian falloff keeps highlights soft
 			float dU = fabsf(t - scanUp);
 			float aU = (dU < w * 4.0f) ? expf(-(dU * dU) / (w * w)) : 0.0f;
 
@@ -218,7 +203,7 @@ namespace GameScenes
 		{
 			float ph = driftPhase * 0.5f + t * 2.0f + strand * PI;
 
-			// scan-proximate cubes tilt more — they're being "inspected"
+			// scan-proximate cubes tilt more
 			float scan = GetScanAmp(t);
 			float amp = tiltAmp + scan * 8.0f;
 
@@ -264,6 +249,8 @@ namespace GameScenes
 	};
 
 
+	// ==================== GLOBALS & HELPERS ====================
+
 	inline std::shared_ptr<HelixState>& GetHelixState()
 	{
 		static std::shared_ptr<HelixState> inst;
@@ -279,6 +266,7 @@ namespace GameScenes
 		scene.voxelObjects.push_back(VoxelObject(1, 1, 1, { PAL_HX_PULSE }));
 		scene.voxelObjects.push_back(VoxelObject(1, 1, 1, { PAL_HX_FLASH }));
 
+		// REST — off-white lambertian
 		{
 			Material m;
 			m.type = MaterialType::Lambertian;
@@ -286,6 +274,7 @@ namespace GameScenes
 			m.roughness = 0.25f;
 			scene.materials[MAT_COUNT + (PAL_HX_REST - 1)] = m;
 		}
+		// PULSE — slightly teal-shifted lambertian
 		{
 			Material m;
 			m.type = MaterialType::Lambertian;
@@ -293,6 +282,7 @@ namespace GameScenes
 			m.roughness = 0.18f;
 			scene.materials[MAT_COUNT + (PAL_HX_PULSE - 1)] = m;
 		}
+		// FLASH — emissive teal glow
 		{
 			Material m;
 			m.type = MaterialType::Emissive;
@@ -363,16 +353,16 @@ namespace GameScenes
 
 				float scale = hx.cubeSize * hsmooth(combined);
 
-				// scan proximity also slightly scales up cubes
+				// scan proximity slightly scales up cubes
 				scale *= 1.0f + scan * 0.08f;
 
 				int objIdx;
 				if (scan > 0.6f)
-					objIdx = hx.objBase + 2;
+					objIdx = hx.objBase + 2;   // FLASH
 				else if (scan > 0.15f)
-					objIdx = hx.objBase + 1;
+					objIdx = hx.objBase + 1;   // PULSE
 				else
-					objIdx = hx.objBase + 0;
+					objIdx = hx.objBase + 0;   // REST
 
 				if (scale < 0.1f) continue;
 
@@ -387,6 +377,8 @@ namespace GameScenes
 		scene.RebuildDirtyInstances();
 	}
 
+
+	// ==================== SCENE DEFINITION ====================
 
 	inline SceneDef HelixShowcase()
 	{
@@ -435,7 +427,7 @@ namespace GameScenes
 
 		auto& hx = GetHelixState();
 		hx = std::make_shared<HelixState>();
-		hx->Reset();  // seeds initial values
+		hx->Reset();
 
 		s.tickCallback = [hx](SceneDef&, Tmpl8::Scene& scene,
 			float dt, std::function<void()> reset)
