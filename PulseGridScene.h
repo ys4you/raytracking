@@ -1,4 +1,4 @@
-
+﻿
 #pragma once
 #include "SceneManager.h"
 #include "VoxelFactory.h"
@@ -71,7 +71,7 @@ namespace GameScenes
 			bloomSpike = 0.4f;
 		}
 
-		float GetAmplitude(int gx, int gz) const
+		float GetAmplitude(const int gx, const int gz) const
 		{
 			float amp = 0.0f;
 			for (int i = 0; i < PG_MAX_WAVES; i++)
@@ -84,16 +84,17 @@ namespace GameScenes
 				float dist = sqrtf(dx * dx + dz * dz);
 
 				float ringDist = fabsf(dist - w.radius);
-				float ring = expf(-(ringDist * ringDist) / (waveWidth * waveWidth));
+				// Gaussian ring profile gives smoother pulse shoulders than a hard threshold.
+                float ring = expf(-(ringDist * ringDist) / (waveWidth * waveWidth));
 
 				amp += ring * w.life;
 			}
 			return std::clamp(amp, 0.0f, 1.0f);
 		}
 
-		void TickRotation(float dtMs)
+		void TickRotation(const float dtMs)
 		{
-			float dt = dtMs * 0.001f;
+			const float dt = dtMs * 0.001f;
 			angleX += speedX * dt;
 			angleY += speedY * dt;
 			angleZ += speedZ * dt;
@@ -107,7 +108,7 @@ namespace GameScenes
 				bloomSpike = 0.0f;
 		}
 
-		void Tick(float dtMs)
+		void Tick(const float dtMs)
 		{
 			if (paused) return;
 			float dt = dtMs * 0.001f * speedMul;

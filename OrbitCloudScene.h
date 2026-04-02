@@ -1,4 +1,4 @@
-
+﻿
 #pragma once
 #include "SceneManager.h"
 #include "VoxelFactory.h"
@@ -85,8 +85,8 @@ namespace GameScenes
 
         void SimulateRay()
         {
-            float theta = (rand() % 628) * 0.01f;
-            float phi = (rand() % 314) * 0.01f - 1.5708f;
+            const float theta = (rand() % 628) * 0.01f;
+            const float phi = (rand() % 314) * 0.01f - 1.5708f;
 
             float rx = cosf(phi) * cosf(theta);
             float ry = sinf(phi);
@@ -100,20 +100,21 @@ namespace GameScenes
                 float py = c.heightOffset;
                 float pz = sinf(c.orbitPhase) * c.orbitRadius;
 
+                // Cross-product magnitude to ray direction approximates shortest line-to-point distance.
                 float cx = ry * pz - rz * py;
                 float cy = rz * px - rx * pz;
                 float cz = rx * py - ry * px;
 
-                float dist = sqrtf(cx * cx + cy * cy + cz * cz);
+                const float dist = sqrtf(cx * cx + cy * cy + cz * cz);
 
                 c.isHit = (dist < c.cubeSize * 1.35f);
             }
         }
 
 
-        void TickRotation(float dtMs)
+        void TickRotation(const float dtMs)
         {
-            float dt = dtMs * 0.001f;
+            const float dt = dtMs * 0.001f;
             angleX += speedX * dt;
             angleY += speedY * dt;
             angleZ += speedZ * dt;
@@ -124,10 +125,10 @@ namespace GameScenes
         }
 
 
-        void Tick(float dtMs)
+        void Tick(const float dtMs)
         {
             if (paused) return;
-            float dt = dtMs * 0.001f;
+            const float dt = dtMs * 0.001f;
 
             for (int i = 0; i < OC_COUNT; i++)
             {

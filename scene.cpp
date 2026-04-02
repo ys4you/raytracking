@@ -150,6 +150,7 @@ __forceinline static float intersect_cube(Ray& ray)
     const float ty = min(ty1, ty2), tz = min(tz1, tz2);
     float tmin = max(max(min(tx1, tx2), ty), tz);
     float tmax = min(min(max(tx1, tx2), max(ty1, ty2)), max(tz1, tz2));
+    // Remember which slab produced entry time so shading can reconstruct a face normal.
     if (tmin == tz) ray.axis = 2;
     else if (tmin == ty) ray.axis = 1;
     return tmax >= tmin ? tmin : 1e34f;
@@ -304,6 +305,7 @@ __forceinline bool Scene::Setup3DDDA(Ray& ray, DDAState& state) const
     const bool startedInGrid = point_in_cube(ray.O);
     if (!startedInGrid) { state.t = intersect_cube(ray); if (state.t > 1e33f) return false; }
     static const float cellSize = 1.f / WORLDSIZE;
+    // Convert packed sign bits (0/1) to DDA step signs (+1/-1).
     state.step = make_int3(1 - (int)ray.Dsign.x * 2, 1 - (int)ray.Dsign.y * 2, 1 - (int)ray.Dsign.z * 2);
     const float3 posInGrid = float3(
         (ray.O.x + (state.t + 0.00005f) * ray.D.x) * WORLDSIZE,
@@ -390,6 +392,7 @@ __forceinline bool Scene::TraverseDDA(
             }
         }
 
+        // Use branch-minimal axis selection in the hot traversal loop.
         const bool xLTy = s.tmax.x < s.tmax.y, xLTz = s.tmax.x < s.tmax.z, yLTz = s.tmax.y < s.tmax.z;
         if (xLTy & xLTz) { s.t = s.tmax.x; s.X += s.step.x; s.tmax.x += s.tdelta.x; s.axis = 0; }
         else if (yLTz) { s.t = s.tmax.y; s.Y += s.step.y; s.tmax.y += s.tdelta.y; s.axis = 1; }

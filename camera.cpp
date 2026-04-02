@@ -41,15 +41,15 @@ Camera::~Camera()
 
 float3 Camera::FisheyeBaseDir(float px, float py) const
 {
-	float nx = (2.0f * px / SCRWIDTH - 1.0f);
-	float ny = 1.0f - (2.0f * py / SCRHEIGHT);
+	const float nx = (2.0f * px / SCRWIDTH - 1.0f);
+	const float ny = 1.0f - (2.0f * py / SCRHEIGHT);
 
-	float aspectInv = (float)SCRHEIGHT / (float)SCRWIDTH;
+	const float aspectInv = (float)SCRHEIGHT / (float)SCRWIDTH;
 
-	float hfovRad = hfov * PI / 180.0f;
+	const float hfovRad = hfov * PI / 180.0f;
 
-	float phi = nx * hfovRad * 0.5f;
-	float theta = ny * hfovRad * 0.5f * aspectInv;
+	const float phi = nx * hfovRad * 0.5f;
+	const float theta = ny * hfovRad * 0.5f * aspectInv;
 
 	float3 dir;
 	dir.x = cos(theta) * sin(phi);
@@ -61,32 +61,32 @@ float3 Camera::FisheyeBaseDir(float px, float py) const
 
 float3 Camera::PaniniBaseDir(float px, float py) const
 {
-	float nx = (2.0f * px / SCRWIDTH - 1.0f);
-	float ny = 1.0f - (2.0f * py / SCRHEIGHT);
+	const float nx = (2.0f * px / SCRWIDTH - 1.0f);
+	const float ny = 1.0f - (2.0f * py / SCRHEIGHT);
 
-	float aspectInv = (float)SCRHEIGHT / (float)SCRWIDTH;
+	const float aspectInv = (float)SCRHEIGHT / (float)SCRWIDTH;
 
-	float hfovRad = hfov * PI / 180.0f;
-	float halfFov = hfovRad * 0.5f;
+	const float hfovRad = hfov * PI / 180.0f;
+	const float halfFov = hfovRad * 0.5f;
 
-	float d = panini_d;
+	const float d = panini_d;
 
 	float uMax = (d + 1.0f) * sin(halfFov) / (d + cos(halfFov));
 
 	float u = nx * uMax;
 	float v = ny * uMax * aspectInv;
 
-	float dp1 = d + 1.0f;
-	float phi =
+	const float dp1 = d + 1.0f;
+	const float phi =
 		atan2(u, dp1) +
 		asin(u * d / sqrt(dp1 * dp1 + u * u));
 
-	float cosPhi = cos(phi);
+	const float cosPhi = cos(phi);
 
 	float Sh = dp1 / (d + cosPhi);
 	float Sv = (1.0f - panini_s) * Sh + panini_s / cosPhi;
 
-	float theta = atan(v / Sv);
+	const float theta = atan(v / Sv);
 
 	float3 dir;
 	dir.x = cos(theta) * sin(phi);
@@ -98,7 +98,7 @@ float3 Camera::PaniniBaseDir(float px, float py) const
 
 Ray Camera::GetPrimaryRay(const float x, const float y) const
 {
-	float3 dirCam = (useFisheye)
+	const float3 dirCam = (useFisheye)
 		? FisheyeBaseDir(x + 0.5f, y + 0.5f)
 		: PaniniBaseDir(x + 0.5f, y + 0.5f);
 
@@ -109,7 +109,7 @@ Ray Camera::GetPrimaryRay(const float x, const float y) const
 
 	dir = normalize(dir);
 
-	float t = dot(dir, camAhead);
+	const float t = dot(dir, camAhead);
 
 	float localBlur = 0.0f;
 
@@ -120,19 +120,19 @@ Ray Camera::GetPrimaryRay(const float x, const float y) const
 
 	localBlur = clamp(localBlur, 0.0f, 1.0f);
 
-	float finalBlur = localBlur * blurFactor;
+	const float finalBlur = localBlur * blurFactor;
 
-	float r = sqrt(RandomFloat());
-	float theta = 2.0f * PI * RandomFloat();
+	const float r = sqrt(RandomFloat());
+	const float theta = 2.0f * PI * RandomFloat();
 
-	float dx = r * cos(theta);
-	float dy = r * sin(theta);
+	const float dx = r * cos(theta);
+	const float dy = r * sin(theta);
 
 	float3 lensOffset =
 		camRight * dx * aperture * finalBlur +
 		camUp * dy * aperture * finalBlur;
 
-	float3 focusPoint = camPos + dir * t;
+	const float3 focusPoint = camPos + dir * t;
 
 	float3 origin = camPos + lensOffset;
 	float3 direction = normalize(focusPoint - origin);
@@ -140,25 +140,25 @@ Ray Camera::GetPrimaryRay(const float x, const float y) const
 	return Ray(origin, direction);
 }
 
-Ray Camera::GetPinholeRay(float x, float y)
+Ray Camera::GetPinholeRay(const float x, const float y) const
 {
-	float u = x / SCRWIDTH;
-	float v = y / SCRHEIGHT;
+	const float u = x / SCRWIDTH;
+	const float v = y / SCRHEIGHT;
 
 	float3 P = topLeft +
 		u * (topRight - topLeft) +
 		v * (bottomLeft - topLeft);
 
-	float3 pinholeDir = normalize(P - camPos);
+	const float3 pinholeDir = normalize(P - camPos);
 
-	float focusDistance = (focusRange.x + focusRange.y) * 0.5f;
-	float3 focusPoint = camPos + pinholeDir * focusDistance;
+	const float focusDistance = (focusRange.x + focusRange.y) * 0.5f;
+	const float3 focusPoint = camPos + pinholeDir * focusDistance;
 
-	float r = sqrt(RandomFloat());
-	float theta = 2.0f * PI * RandomFloat();
+	const float r = sqrt(RandomFloat());
+	const float theta = 2.0f * PI * RandomFloat();
 
-	float dx = r * cos(theta);
-	float dy = r * sin(theta);
+	const float dx = r * cos(theta);
+	const float dy = r * sin(theta);
 
 	float3 lensOffset = camRight * dx * aperture + camUp * dy * aperture;
 
@@ -172,10 +172,10 @@ bool Camera::HandleInput(const float t)
 {
 	if (!WindowHasFocus()) return false;
 
-	float speed = 0.0015f * t;
+	const float speed = 0.0015f * t;
 
 	float3 ahead = normalize(camTarget - camPos);
-	float3 tmpUp(0, 1, 0);
+	const float3 tmpUp(0, 1, 0);
 
 	float3 right = normalize(cross(tmpUp, ahead));
 	float3 up = normalize(cross(ahead, right));
@@ -252,22 +252,22 @@ bool Camera::CameraHasMoved()
 
 bool Camera::WorldToScreen(const float3& P, float& outX, float& outY) const
 {
-	float3 dir = P - camPos;
+	const float3 dir = P - camPos;
 
-	float cx = dot(dir, camRight);
-	float cy = dot(dir, camUp);
-	float cz = dot(dir, camAhead);
+	const float cx = dot(dir, camRight);
+	const float cy = dot(dir, camUp);
+	const float cz = dot(dir, camAhead);
 
 	if (cz < 0.001f) return false;
 
-	float len = sqrtf(cx * cx + cy * cy + cz * cz);
+	const float len = sqrtf(cx * cx + cy * cy + cz * cz);
 
-	float phi = atan2f(cx / len, cz / len);
-	float theta = asinf(cy / len);
+	const float phi = atan2f(cx / len, cz / len);
+	const float theta = asinf(cy / len);
 
-	float hfovRad = hfov * PI / 180.0f;
-	float halfFov = hfovRad * 0.5f;
-	float aspectInv = (float)SCRHEIGHT / (float)SCRWIDTH;
+	const float hfovRad = hfov * PI / 180.0f;
+	const float halfFov = hfovRad * 0.5f;
+	const float aspectInv = (float)SCRHEIGHT / (float)SCRWIDTH;
 
 	float nx, ny;
 
@@ -278,20 +278,20 @@ bool Camera::WorldToScreen(const float3& P, float& outX, float& outY) const
 	}
 	else
 	{
-		float d = panini_d;
-		float s = panini_s;
+		const float d = panini_d;
+		const float s = panini_s;
 
-		float dp1 = d + 1.0f;
-		float cosPhi = cosf(phi);
+		const float dp1 = d + 1.0f;
+		const float cosPhi = cosf(phi);
 
-		float u = dp1 * sinf(phi) / (d + cosPhi);
+		const float u = dp1 * sinf(phi) / (d + cosPhi);
 
-		float Sh = dp1 / (d + cosPhi);
-		float Sv = (1.0f - s) * Sh + s / cosPhi;
+		const float Sh = dp1 / (d + cosPhi);
+		const float Sv = (1.0f - s) * Sh + s / cosPhi;
 
-		float v = tanf(theta) * Sv;
+		const float v = tanf(theta) * Sv;
 
-		float uMax = dp1 * sinf(halfFov) / (d + cosf(halfFov));
+		const float uMax = dp1 * sinf(halfFov) / (d + cosf(halfFov));
 
 		nx = u / uMax;
 		ny = v / (uMax * aspectInv);
@@ -304,7 +304,7 @@ bool Camera::WorldToScreen(const float3& P, float& outX, float& outY) const
 		outY >= 0 && outY < SCRHEIGHT - 1);
 }
 
-Frustum Camera::BuildFrustum()
+Frustum Camera::BuildFrustum() const
 {
 	Frustum f;
 

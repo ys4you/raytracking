@@ -6,9 +6,10 @@ Ray::Ray(const float3 origin, const float3 direction, const float rayLength, con
 {
     rD = float3(1 / D.x, 1 / D.y, 1 / D.z);
 
-    uint xsign = *reinterpret_cast<uint*>(&D.x) >> 31;
-    uint ysign = *reinterpret_cast<uint*>(&D.y) >> 31;
-    uint zsign = *reinterpret_cast<uint*>(&D.z) >> 31;
+    // Extract the IEEE sign bit (0 or 1) so DDA can choose step direction per axis.
+    const uint xsign = *reinterpret_cast<uint*>(&D.x) >> 31;
+    const uint ysign = *reinterpret_cast<uint*>(&D.y) >> 31;
+    const uint zsign = *reinterpret_cast<uint*>(&D.z) >> 31;
 
     Dsign = float3(static_cast<float>(xsign),
         static_cast<float>(ysign),
@@ -19,8 +20,8 @@ float3 Ray::GetNormal(const Scene& scene) const
 {
     if (sphereIndex >= 0)
     {
-        float3 hitPos = O + t * D;
-        float3 centre = float3(
+        const float3 hitPos = O + t * D;
+        const float3 centre = float3(
             scene.sphereSOA.cx[sphereIndex],
             scene.sphereSOA.cy[sphereIndex],
             scene.sphereSOA.cz[sphereIndex]
@@ -33,16 +34,16 @@ float3 Ray::GetNormal(const Scene& scene) const
         const VoxelInstance& inst = scene.voxelInstances[instanceIndex];
 
         // Compute fractional position inside the hit voxel cell.
-        float3 hitWorld = O + t * D;
-        float3 hitLocal = inst.worldToLocal.TransformPoint(hitWorld);
+        const float3 hitWorld = O + t * D;
+        const float3 hitLocal = inst.worldToLocal.TransformPoint(hitWorld);
 
-        float3 fG(hitLocal.x - floorf(hitLocal.x),
+        const float3 fG(hitLocal.x - floorf(hitLocal.x),
             hitLocal.y - floorf(hitLocal.y),
             hitLocal.z - floorf(hitLocal.z));
-        float3 d = fminf(fG, 1.0f - fG);
+        const float3 d = fminf(fG, 1.0f - fG);
 
-        float3 localD = inst.worldToLocal.TransformVector(D);
-        float mind = min(min(d.x, d.y), d.z);
+        const float3 localD = inst.worldToLocal.TransformVector(D);
+        const float mind = min(min(d.x, d.y), d.z);
         float3 localN(0, 0, 0);
         if (mind == d.x)      localN.x = (localD.x > 0) ? -1.0f : 1.0f;
         else if (mind == d.y) localN.y = (localD.y > 0) ? -1.0f : 1.0f;

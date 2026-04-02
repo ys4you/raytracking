@@ -12,7 +12,7 @@ public:
 	/// <summary>Adds a scene definition and returns its index.</summary>
 	int  AddScene(const SceneDef& def);
 	/// <summary>Loads a scene definition into runtime scene state.</summary>
-	void LoadScene(int id, Tmpl8::Scene& worldScene, Tmpl8::Camera& camera,
+	void LoadScene(const int id, Tmpl8::Scene& worldScene, Tmpl8::Camera& camera,
 		Sky& sky, SceneLights& lights);
 
 	/// <summary>Returns the currently active scene definition.</summary>

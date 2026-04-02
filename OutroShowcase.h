@@ -100,7 +100,7 @@ namespace GameScenes
 
 	// ---- Catmull-Rom helpers ----
 
-	inline float3 OutroCR(float3 p0, float3 p1, float3 p2, float3 p3, float t)
+	inline float3 OutroCR(const float3 p0, const float3 p1, const float3 p2, const float3 p3, const float t)
 	{
 		float t2 = t * t, t3 = t2 * t;
 		return 0.5f * (
@@ -111,10 +111,11 @@ namespace GameScenes
 			);
 	}
 
-	inline float3 OutroEval(const float3* pts, int nPts, float t)
+	inline float3 OutroEval(const float3* pts, const int nPts, const float t)
 	{
 		int segs = nPts - 3;
 		if (segs < 1) return pts[1];
+		// Convert normalized path time into segment-space for Catmull-Rom evaluation.
 		float s = std::clamp(t, 0.0f, 1.0f) * (float)segs;
 		int i = std::clamp((int)s, 0, segs - 1);
 		return OutroCR(pts[i], pts[i + 1], pts[i + 2], pts[i + 3], s - (float)i);

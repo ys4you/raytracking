@@ -32,7 +32,7 @@ public:
 	/// <summary>Returns the primary camera ray for normalized screen coordinates.</summary>
 	Ray GetPrimaryRay( const float x, const float y ) const;
 	/// <summary>Returns a pinhole camera ray for normalized screen coordinates.</summary>
-	Ray GetPinholeRay(float x, float y);
+	Ray GetPinholeRay(const float x, const float y) const;
 	/// <summary>Processes camera input and reports whether state changed.</summary>
 	bool HandleInput( const float t );
 	/// <summary>Returns whether the camera moved since the previous frame.</summary>
@@ -64,7 +64,7 @@ public:
 	bool useFisheye = false;
 
 	/// <summary>Builds frustum planes for the current camera transform.</summary>
-	Frustum BuildFrustum();
+	Frustum BuildFrustum() const;
 
 };
 

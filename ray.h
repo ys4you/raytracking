@@ -10,7 +10,7 @@ class Ray
 {
 public:
 	/// <summary>Initializes a ray from origin, direction, and optional length.</summary>
-	Ray( const float3 origin, const float3 direction, const float rayLength = 1e34f, const uint rgb = 0 );
+	Ray(const float3 origin, const float3 direction, const float rayLength = 1e34f, const uint rgb = 0);
 	/// <summary>Computes the shading normal at the current hit point.</summary>
 	float3 GetNormal(const Scene& scene) const;
 	/// <summary>Returns the world-space intersection point.</summary>
