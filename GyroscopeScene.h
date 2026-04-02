@@ -361,7 +361,7 @@ namespace GameScenes
 			// lerp camera to fixed trail position
 			camBlend = ep;
 		}
-		void BuildTrailSpline(const std::vector<float3>& camSplinePts, float trailStartTime)
+		void BuildTrailSpline(const std::vector<float3>& /*camSplinePts*/, float /*trailStartTime*/)
 		{
 			if (trailBuilt) return;
 			trailBuilt = true;
@@ -374,7 +374,7 @@ namespace GameScenes
 
 			float3 gather(0.5f, 0.5f, 0.5f);
 
-			// pass 0.03 units in front of camera  at 120 FOV screen half-width = 0.052
+			// pass 0.03 units in front of camera  at 120 FOV screen half-width = 0.052
 			float passDist = 0.03f;
 			float sweep = 0.15f; // how far right/left the sweep extends
 
@@ -383,11 +383,11 @@ namespace GameScenes
 			trailSpline[0] = gather + (gather - camPos) * 0.15f;
 			// P1: gather point (start)
 			trailSpline[1] = gather;
-			// P2: approach  come in from the right side
+			// P2: approach  come in from the right side
 			trailSpline[2] = camPos + camFwd * passDist * 3.0f + camRight * sweep * 1.5f;
-			// P3: wipe entry  right edge of screen, close to camera
+			// P3: wipe entry  right edge of screen, close to camera
 			trailSpline[3] = camPos + camFwd * passDist + camRight * sweep * 0.3f;
-			// P4: wipe exit  left edge of screen, still close
+			// P4: wipe exit  left edge of screen, still close
 			trailSpline[4] = camPos + camFwd * passDist - camRight * sweep * 0.3f;
 			// P5: depart left
 			trailSpline[5] = camPos + camFwd * passDist * 3.0f - camRight * sweep * 1.5f;
@@ -899,7 +899,7 @@ namespace GameScenes
 				if (resetAcc) resetAcc();
 			};
 
-		s.uiCallback = [gyro](SceneDef& def, Tmpl8::Scene& scene,
+		s.uiCallback = [gyro](SceneDef& /*def*/, Tmpl8::Scene& scene,
 			std::function<void()> resetAcc)
 			{
 				if (!ImGui::CollapsingHeader("Gyroscope", ImGuiTreeNodeFlags_DefaultOpen))

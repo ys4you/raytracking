@@ -1,7 +1,7 @@
 #pragma once
 
-#define SCRWIDTH	/*1920*/800
-#define SCRHEIGHT	/*1080*/600
+#define SCRWIDTH	800/*800*/
+#define SCRHEIGHT	450/*600*/
 
 
 typedef float4 Plane;

@@ -423,7 +423,7 @@ void Renderer::Init()
         auto& bm = GameScenes::GetBrickmapState();
         if (bm) bm->speedMul = e.param1;
         });
-    eventSystem.RegisterHandler("brickmap_reset", [](const TimeEvent& e) {
+    eventSystem.RegisterHandler("brickmap_reset", [](const TimeEvent& /*e*/) {
         auto& bm = GameScenes::GetBrickmapState();
         if (bm) bm->Reset();
         });

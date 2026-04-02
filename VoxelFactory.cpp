@@ -5,7 +5,6 @@
 #include "Core/Material.h"
 #include <ogt_vox.h>
 #include <cmath>
-
 int VoxelFactory::CreateObject(Tmpl8::Scene& scene, const uint sizeX, const uint sizeY, const uint sizeZ,
     const std::vector<uint8_t>& voxels)
 {
@@ -14,7 +13,6 @@ int VoxelFactory::CreateObject(Tmpl8::Scene& scene, const uint sizeX, const uint
     scene.voxelObjects.push_back(obj);
     return index;
 }
-
 void VoxelFactory::CreateInstance(
     Tmpl8::Scene& scene,
     const int objectIndex,
@@ -24,11 +22,9 @@ void VoxelFactory::CreateInstance(
     const float3 pivot)
 {
     const VoxelObject& obj = scene.voxelObjects[objectIndex];
-
     const float invWS = 1.0f / WORLDSIZE;
     const float3 wsPos = position * invWS;
     const float3 wsScale = scale * invWS;
-
     float3 localPivot;
     if (pivot.x == 0 && pivot.y == 0 && pivot.z == 0)
     {
@@ -42,16 +38,13 @@ void VoxelFactory::CreateInstance(
     {
         localPivot = pivot;
     }
-
-    static constexpr float DEG2RAD = 3.14159265f / 180.0f;
-    float3 rotRad = rotation * DEG2RAD;
+    static constexpr float kDeg2Rad = 3.14159265f / 180.0f;
+    float3 rotRad = rotation * kDeg2Rad;
     // Convert VOX-up authored assets into the engine's forward convention.
     rotRad.x -= 3.14159265f / 2.0f;
-
     VoxelInstance inst(objectIndex, wsPos, rotRad, wsScale, localPivot);
     scene.voxelInstances.push_back(inst);
 }
-
 void VoxelFactory::FromVoxTransform(const ogt_vox_transform& T,
     float3& outPos, float3& outRot, float3& outScale, const float3 pivot)
 {
@@ -65,7 +58,6 @@ void VoxelFactory::FromVoxTransform(const ogt_vox_transform& T,
         sqrtf(T.m21 * T.m21 + T.m22 * T.m22) / outScale.z);
     outRot.z = atan2f(T.m10 / outScale.y, T.m00 / outScale.x);
 }
-
 void VoxelFactory::FlattenInstance(
     Tmpl8::Scene& scene,
     const int objectIndex,

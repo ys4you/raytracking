@@ -189,7 +189,7 @@ namespace GameScenes
 
 		auto st = std::make_shared<MirrorState>();
 
-		s.tickCallback = [st](SceneDef& def, Tmpl8::Scene& scene,
+		s.tickCallback = [st](SceneDef& /*def*/, Tmpl8::Scene& scene,
 			float deltaTime, std::function<void()> resetAcc)
 			{
 				if (!st->initialized)
@@ -214,7 +214,7 @@ namespace GameScenes
 				if (resetAcc) resetAcc();
 			};
 
-		s.uiCallback = [st](SceneDef& def, Tmpl8::Scene& scene,
+		s.uiCallback = [st](SceneDef& /*def*/, Tmpl8::Scene& /*scene*/,
 			std::function<void()> resetAcc)
 			{
 				if (!ImGui::CollapsingHeader("Infinity Mirror", ImGuiTreeNodeFlags_DefaultOpen))

@@ -319,7 +319,7 @@ namespace GameScenes
 		life->ApplyPreset();
 		life->SeedRandom(0.45f);
 
-		s.tickCallback = [life](SceneDef& def, Tmpl8::Scene& scene,
+		s.tickCallback = [life](SceneDef& /*def*/, Tmpl8::Scene& scene,
 			float deltaTime, std::function<void()> resetAcc)
 			{
 				if (life->needsInitialSync)
@@ -347,7 +347,7 @@ namespace GameScenes
 				if (resetAcc) resetAcc();
 			};
 
-		s.uiCallback = [life](SceneDef& def, Tmpl8::Scene& scene,
+		s.uiCallback = [life](SceneDef& /*def*/, Tmpl8::Scene& scene,
 			std::function<void()> resetAcc)
 			{
 				if (!ImGui::CollapsingHeader("Living Cube", ImGuiTreeNodeFlags_DefaultOpen))

@@ -25,6 +25,8 @@ struct SceneLights
 
 namespace Tmpl8
 {
+#pragma warning(push)
+#pragma warning(disable: 4324)
 	class Renderer : public TheApp
 	{
 	public:
@@ -193,4 +195,6 @@ namespace Tmpl8
 
 		bool useUI = false;
 	};
+#pragma warning(pop)
+
 }
