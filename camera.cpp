@@ -1,5 +1,7 @@
 #include "template.h"
 
+bool Camera::persistDoF = false;
+
 Camera::Camera()
 {
 	FILE* f = fopen("camera.bin", "rb");
@@ -20,9 +22,23 @@ Camera::Camera()
 		bottomLeft = float3(-aspect, -1, 0);
 	}
 
+	// Depth of field starts off each launch unless a persisted config exists.
 	aperture = 0.0f;
-	focusRange = float2(0.0f, .0f);
-	blurFactor = .0f;
+	focusRange = float2(0.0f, 0.0f);
+	blurFactor = 0.0f;
+	persistDoF = false;
+
+	if (FILE* df = fopen("dof.bin", "rb"))
+	{
+		float saved[2] = { 0.0f, 0.0f };
+		if (fread(saved, sizeof(float), 2, df) == 2)
+		{
+			aperture = saved[0];     // lens radius
+			focusRange.x = saved[1]; // focus distance
+			persistDoF = true;
+		}
+		fclose(df);
+	}
 
 	hfov = 120.0f;
 	panini_d = 0.0f;
@@ -35,8 +51,26 @@ Camera::Camera()
 Camera::~Camera()
 {
 	FILE* f = fopen("camera.bin", "wb");
-	fwrite(this, 1, sizeof(Camera), f);
-	fclose(f);
+	if (f)
+	{
+		fwrite(this, 1, sizeof(Camera), f);
+		fclose(f);
+	}
+
+	// Persist DoF separately so it never disturbs the camera.bin layout.
+	if (persistDoF)
+	{
+		if (FILE* df = fopen("dof.bin", "wb"))
+		{
+			const float saved[2] = { aperture, focusRange.x };
+			fwrite(saved, sizeof(float), 2, df);
+			fclose(df);
+		}
+	}
+	else
+	{
+		remove("dof.bin");
+	}
 }
 
 float3 Camera::FisheyeBaseDir(float px, float py) const
@@ -98,44 +132,39 @@ float3 Camera::PaniniBaseDir(float px, float py) const
 
 Ray Camera::GetPrimaryRay(const float x, const float y) const
 {
+	// Direction through the pixel for the active projection (centre of the lens).
 	const float3 dirCam = (useFisheye)
 		? FisheyeBaseDir(x + 0.5f, y + 0.5f)
 		: PaniniBaseDir(x + 0.5f, y + 0.5f);
 
-	float3 dir =
+	const float3 dir = normalize(
 		dirCam.x * camRight +
 		dirCam.y * camUp +
-		dirCam.z * camAhead;
+		dirCam.z * camAhead);
 
-	dir = normalize(dir);
+	// aperture == lens radius (world units), focusRange.x == focus distance.
+	const float lensRadius = aperture;
+	const float focusDist = focusRange.x;
 
-	const float t = dot(dir, camAhead);
+	// DoF off: behave exactly like a pinhole through the same projection.
+	if (lensRadius <= 0.0f || focusDist <= 0.0f)
+		return Ray(camPos, dir);
 
-	float localBlur = 0.0f;
+	// Thin-lens model. Jitter the origin across the lens disk, then aim every
+	// sample at the same point on the focal plane. Points at focusDist stay
+	// sharp; nearer/farther points spread across the disk and blur once the
+	// samples accumulate over several frames.
+	const float cosA = dot(dir, camAhead);
+	const float tFocus = focusDist / max(cosA, 1e-3f); // flat plane perpendicular to view axis
+	const float3 focusPoint = camPos + dir * tFocus;
 
-	if (t < focusRange.x)
-		localBlur = (focusRange.x - t) / focusRange.x;
-	else if (t > focusRange.y)
-		localBlur = (t - focusRange.y) / focusRange.y;
+	const float radius = sqrtf(RandomFloat()) * lensRadius; // uniform over the disk
+	const float angle = 2.0f * PI * RandomFloat();
+	const float dx = radius * cosf(angle);
+	const float dy = radius * sinf(angle);
 
-	localBlur = clamp(localBlur, 0.0f, 1.0f);
-
-	const float finalBlur = localBlur * blurFactor;
-
-	const float r = sqrt(RandomFloat());
-	const float theta = 2.0f * PI * RandomFloat();
-
-	const float dx = r * cos(theta);
-	const float dy = r * sin(theta);
-
-	float3 lensOffset =
-		camRight * dx * aperture * finalBlur +
-		camUp * dy * aperture * finalBlur;
-
-	const float3 focusPoint = camPos + dir * t;
-
-	float3 origin = camPos + lensOffset;
-	float3 direction = normalize(focusPoint - origin);
+	const float3 origin = camPos + camRight * dx + camUp * dy;
+	const float3 direction = normalize(focusPoint - origin);
 
 	return Ray(origin, direction);
 }
@@ -145,27 +174,13 @@ Ray Camera::GetPinholeRay(const float x, const float y) const
 	const float u = x / SCRWIDTH;
 	const float v = y / SCRHEIGHT;
 
-	float3 P = topLeft +
+	const float3 P = topLeft +
 		u * (topRight - topLeft) +
 		v * (bottomLeft - topLeft);
 
-	const float3 pinholeDir = normalize(P - camPos);
-
-	const float focusDistance = (focusRange.x + focusRange.y) * 0.5f;
-	const float3 focusPoint = camPos + pinholeDir * focusDistance;
-
-	const float r = sqrt(RandomFloat());
-	const float theta = 2.0f * PI * RandomFloat();
-
-	const float dx = r * cos(theta);
-	const float dy = r * sin(theta);
-
-	float3 lensOffset = camRight * dx * aperture + camUp * dy * aperture;
-
-	float3 origin = camPos + lensOffset;
-	float3 direction = normalize(focusPoint - origin);
-
-	return Ray(origin, direction);
+	// True pinhole, no lens jitter, so picking and auto-focus stay deterministic
+	// even when the aperture is open.
+	return Ray(camPos, normalize(P - camPos));
 }
 
 bool Camera::HandleInput(const float t)

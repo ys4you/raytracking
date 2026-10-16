@@ -131,6 +131,7 @@ namespace Tmpl8
 
 		float3* rayDirTable = nullptr;
 		bool    rayTableDirty = true;
+		bool    prevCameraMoving = false; // tracks motion->still transitions for DoF accumulation
 		uint32_t sampleCount = 0;
 		uint32_t frameIndex = 0;
 		mat4 lastViewMatrix;

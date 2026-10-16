@@ -88,8 +88,15 @@ namespace GameScenes
             float deltaTime, std::function<void()> resetAcc)
             {
                 if (scene.voxelInstances.empty()) return;
+                const float3 before = rot->GetRotation();
                 rot->Tick(deltaTime);
-                scene.voxelInstances[0].rotation = rot->GetRotation();
+                const float3 after = rot->GetRotation();
+                // Only move the instance and reset accumulation when it actually
+                // rotated. With all speeds at 0 the object is static, so we leave
+                // the accumulator alone and let samples build up over time.
+                if (before.x == after.x && before.y == after.y && before.z == after.z)
+                    return;
+                scene.voxelInstances[0].rotation = after;
                 scene.voxelInstances[0].matricesDirty = true;
                 scene.RebuildDirtyInstances();
                 if (resetAcc) resetAcc();

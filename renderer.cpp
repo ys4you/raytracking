@@ -478,7 +478,6 @@ void Renderer::Tick(float deltaTime)
 
     auto startTime = std::chrono::high_resolution_clock::now();
     sampleCount++;
-    if (!scene.voxelInstances.empty()) sampleCount = 0;
     frameIndex++;
     int totalRaysThisFrame = 0;
 
@@ -494,7 +493,7 @@ void Renderer::Tick(float deltaTime)
     }
     else if (useSplineCamera && !sceneManager.Active().splineEnabled)
     {
-        // scene has locked the camera — apply its override
+        // scene has locked the camera ï¿½ apply its override
         camera.camPos = sceneManager.Active().camPos;
         camera.camTarget = sceneManager.Active().camTarget;
     }
@@ -549,6 +548,9 @@ void Renderer::Tick(float deltaTime)
         length(camera.camTarget - prevCamera.camTarget) > 1e-4f;
 
     if (cameraMoving) rayTableDirty = true;
+
+    // Depth of field is active only when both a lens radius and a focus distance are set.
+    const bool dofActive = camera.aperture > 0.0f && camera.focusRange.x > 0.0f;
 
     if (!cameraMoving && rayTableDirty)
     {
@@ -613,14 +615,39 @@ void Renderer::Tick(float deltaTime)
     const int tilesY = (SCRHEIGHT + TILE - 1) / TILE;
     const int totalTiles = tilesX * tilesY;
 
-    if (!scene.voxelInstances.empty())
+    // Detect whether any voxel instance moved this frame. Animated showcase scenes
+    // (spinning cubes, cellular automata, brickmap, etc.) change instance transforms
+    // every frame; a static scene does not. Hashing position, rotation, scale and
+    // model index tells the two apart cheaply, without any per-scene bookkeeping.
+    static uint64_t prevInstanceHash = 0;
+    static bool     prevSceneStatic = false;
+
+    uint64_t instanceHash = 1469598103934665603ull;
+    auto hashU32 = [&instanceHash](uint32_t v) {
+        instanceHash = (instanceHash ^ v) * 1099511628211ull;
+        };
+    auto hashF = [&hashU32](float f) {
+        uint32_t bits; memcpy(&bits, &f, sizeof(bits)); hashU32(bits);
+        };
+    hashU32(static_cast<uint32_t>(scene.voxelInstances.size()));
+    for (const VoxelInstance& vi : scene.voxelInstances)
     {
-        memset(history, 0, SCRWIDTH * SCRHEIGHT * sizeof(float3));
-        sampleCount = 0;
+        hashF(vi.position.x); hashF(vi.position.y); hashF(vi.position.z);
+        hashF(vi.rotation.x); hashF(vi.rotation.y); hashF(vi.rotation.z);
+        hashF(vi.scale.x);    hashF(vi.scale.y);    hashF(vi.scale.z);
+        hashU32(static_cast<uint32_t>(vi.modelIndex));
     }
+    const bool instancesStatic = (instanceHash == prevInstanceHash);
+    prevInstanceHash = instanceHash;
 
     const bool hasInstances = !scene.voxelInstances.empty();
-    if (hasInstances) sampleCount = 0;
+
+    // Only accumulate when the camera is at rest and nothing in the scene moved.
+    // When the scene first settles, clear the buffers so the average starts clean.
+    const bool sceneStatic = !cameraMoving && instancesStatic;
+    if (sceneStatic && !prevSceneStatic)
+        ResetAccumulator();
+    prevSceneStatic = sceneStatic;
 
 #pragma omp parallel for schedule(dynamic, 1) reduction(+:totalRaysThisFrame)
 for (int tileIdx = 0; tileIdx < totalTiles; ++tileIdx)
@@ -635,32 +662,44 @@ for (int tileIdx = 0; tileIdx < totalTiles; ++tileIdx)
         for (int x = x0; x < x1; ++x)
         {
             const int idx = x + y * SCRWIDTH;
-            const bool traceThisPixel = (sampleCount <= 1) ||
+            // DoF needs a fresh lens sample every frame so blur can converge, and an
+            // instanced scene renders full-res while anything moves (it cannot
+            // reproject). Otherwise a checkerboard split halves the work per frame.
+            const bool traceThisPixel = dofActive || (sampleCount <= 1) ||
+                (hasInstances && !sceneStatic) ||
                 (((x + y) & 1) == (static_cast<int>(frameIndex) & 1));
             if (!traceThisPixel)
             {
-                accumulator[idx] = scene.voxelInstances.empty() ? history[idx] : float3(0);
+                accumulator[idx] = history[idx];
                 continue;
             }
             const float jx = BlueNoise(x, y, sampleCount);
             const float jy = BlueNoise(y, x, sampleCount);
-            Ray r = (cameraMoving || rayTableDirty)
+            Ray r = (cameraMoving || rayTableDirty || dofActive)
                 ? camera.GetPrimaryRay(x + jx, y + jy)
                 : Ray(camera.camPos, rayDirTable[idx]);
             const float3 sample = Trace(r, 0, 0, 0);
             totalRaysThisFrame++;
             float3 blended;
 
-            if (r.instanceIndex >= 0)
+            if (sceneStatic)
             {
+                // Everything is at rest: fold each new sample into a true running
+                // average so quality climbs every frame (progressive SPP). Noise
+                // falls off as 1/sqrt(N). Covers instanced voxels, the static grid,
+                // spheres and sky, plus DoF lens jitter and AA jitter.
+                const int n = sampleCountPerPixel[idx] + 1;
+                blended = (n <= 1)
+                    ? sample
+                    : history[idx] + (sample - history[idx]) * (1.0f / (float)n);
+                sampleCountPerPixel[idx] = n;
+            }
+            else if (r.instanceIndex >= 0)
+            {
+                // Something is moving and this is an instanced surface; there is no
+                // reprojection for instances, so show the live sample.
                 blended = sample;
                 sampleCountPerPixel[idx] = 1;
-            }
-            else if (!cameraMoving)
-            {
-                blended = sample;
-                if (r.voxel != 0)
-                    sampleCountPerPixel[idx] = 1;
             }
             else if (r.voxel > 0 && scene.voxelInstances.empty())
             {
@@ -848,9 +887,27 @@ void Renderer::UI()
 
         if (ImGui::TreeNode("Depth of Field"))
         {
-            camChanged |= ImGui::SliderFloat("Aperture", &camera.aperture, 0.0f, 0.5f, "%.4f");
-            camChanged |= ImGui::SliderFloat("Blur Factor", &camera.blurFactor, 0.0f, 1.0f);
-            camChanged |= ImGui::DragFloat2("Focus Range", &camera.focusRange.x, 0.01f, 0.0f, 100.0f, "%.2f");
+            camChanged |= ImGui::SliderFloat("Aperture (lens radius)", &camera.aperture, 0.0f, 0.5f, "%.4f");
+            camChanged |= ImGui::DragFloat("Focus Distance", &camera.focusRange.x, 0.02f, 0.0f, 100.0f, "%.3f");
+
+            if (ImGui::Button("Auto-focus on center"))
+            {
+                Ray r = camera.GetPinholeRay(SCRWIDTH * 0.5f, SCRHEIGHT * 0.5f);
+                scene.FindNearest(r);
+                const bool hit = !(r.voxel == 0 && r.sphereIndex < 0 && r.instanceIndex < 0);
+                if (hit)
+                {
+                    camera.focusRange.x = r.t;
+                    camChanged = true;
+                }
+            }
+            ImGui::SameLine();
+            ImGui::TextDisabled("aperture 0 = off");
+
+            ImGui::Spacing();
+            ImGui::Checkbox("Persist DoF across runs", &camera.persistDoF);
+            ImGui::SameLine();
+            ImGui::TextDisabled("(dof.bin)");
             ImGui::TreePop();
         }
 
@@ -1159,4 +1216,5 @@ void Renderer::KeyDown(int key)
 {
     if (key == GLFW_KEY_F1) { sceneManager.LoadScene(0, scene, camera, sky, lights); ResetAccumulator(); rayTableDirty = true; lightColorsStored = false; }
     if (key == GLFW_KEY_F2) { sceneManager.LoadScene(1, scene, camera, sky, lights); ResetAccumulator(); rayTableDirty = true; lightColorsStored = false; }
+    if (key == GLFW_KEY_F3) { useUI = !useUI; std::cout << "UI " << (useUI ? "on" : "off") << std::endl; }
 }

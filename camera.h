@@ -3,6 +3,8 @@
 #define SCRWIDTH	800/*800*/
 #define SCRHEIGHT	450/*600*/
 
+#define DOUBLESIZE
+
 
 typedef float4 Plane;
 struct Frustum
@@ -62,6 +64,9 @@ public:
 	float panini_s = 0.0f;
 
 	bool useFisheye = false;
+
+	/// <summary>When true, aperture and focus distance are saved to dof.bin and reloaded on launch.</summary>
+	static bool persistDoF;
 
 	/// <summary>Builds frustum planes for the current camera transform.</summary>
 	Frustum BuildFrustum() const;
